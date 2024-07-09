@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -8,47 +9,71 @@ import (
 )
 
 func main() {
-	// Check if a command line argument is provided
 	if len(os.Args) != 2 {
 		fmt.Println("Incorrect Usage. Expected:")
 		fmt.Println("main.go <filename>")
 		return
 	}
 
-	// Get the command line argument
         fileName := os.Args[1]
+	
+	re := regexp.MustCompile(`\.[^.]+$`)
+	baseName := re.ReplaceAllString(fileName, "")
 
-	// Read the contents of the file
 	content, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
 		return
 	}
 
-        // Parse the contents of the file
 	tokens := tokenize(string(content))
 
-	// Print the parsed content
-	for _, str := range tokens {
-		fmt.Println(str)
+	buffer, err := parse(tokens)
+	if err != nil {
+		fmt.Println("Parse error:", err)
+		return
+	}
+	newFileName := baseName + ".asm"
+	newFile, err := os.Create(newFileName)
+	if err != nil {
+		fmt.Println("failed to create new file: %w", err)
+	}
+	defer newFile.Close()
+
+	// Write text into the new file
+	_, err = newFile.WriteString(buffer)
+	if err != nil {
+		fmt.Println("failed to write to new file: %w", err)
 	}
 }
 
-// parse function to split content into strings separated by ' ', '(', ')', or newline characters
 func tokenize(content string) []string {
-	// Create a regular expression to match '(', ')' and newline
 	re := regexp.MustCompile(`([\s()])`)
 
-	// Replace matches with spaces around them
 	content = re.ReplaceAllStringFunc(content, func(s string) string {
-		if s == " " || s == "\n" {
-			return " "
+		if s == "(" {
+			return s + " "
 		}
 		return " " + s + " "
 	})
 
-	// Split the content by spaces
 	parsedContent := strings.Fields(content)
 
 	return parsedContent
+}
+
+func parse(tokens []string) (string, error){
+	var buffer string
+	var token string
+	buffer = "global _start"
+	buffer = buffer + "\n" + "_start:"
+	token, tokens = tokens[0], tokens[1:]
+	if token == "exit(" {
+		buffer = buffer + "\n" + "  mov    rax, 60"
+		number := tokens[0]
+		buffer = buffer + "\n" + "  mov    rdi, " + number
+		buffer = buffer + "\n" + "  syscall"
+		return buffer, nil
+	}
+	return "", errors.New("Could not parse" + token)
 }
