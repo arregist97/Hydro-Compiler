@@ -17,9 +17,6 @@ func main() {
 
         fileName := os.Args[1]
 	
-	re := regexp.MustCompile(`\.[^.]+$`)
-	baseName := re.ReplaceAllString(fileName, "")
-
 	content, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
@@ -33,14 +30,17 @@ func main() {
 		fmt.Println("Parse error:", err)
 		return
 	}
+
+	re := regexp.MustCompile(`\.[^.]+$`)
+	baseName := re.ReplaceAllString(fileName, "")
 	newFileName := baseName + ".asm"
+
 	newFile, err := os.Create(newFileName)
 	if err != nil {
 		fmt.Println("failed to create new file: %w", err)
 	}
 	defer newFile.Close()
 
-	// Write text into the new file
 	_, err = newFile.WriteString(buffer)
 	if err != nil {
 		fmt.Println("failed to write to new file: %w", err)
