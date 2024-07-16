@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 func main() {
@@ -60,6 +61,27 @@ func tokenize(content string) []string {
 	parsedContent := strings.Fields(content)
 
 	return parsedContent
+}
+
+func buildToken(content string, iOpt ...uint8) (string, string) {
+	var updatedToken string
+	var updatedContent string
+	i := 0
+	if len(iOpt) > 0 {
+		i = iOpt[0]
+	}
+	r, size := utf8.DecodeRuneInString(content[i:])
+
+	if r == " " && i == 0 {
+		updatedToken, updatedContent = buildToken(content[size:])
+	} else if r == "(" || r == ")" || r == " " {
+		updatedToken = string(r)
+		updatedContent = content[i + size:]
+	} else {
+		token, updatedContent := buildToken(content, i + size)
+		updatedToken = string(r) + token
+	}
+	return updatedToken, updatedContent  
 }
 
 func parse(tokens []string) (string, error){
