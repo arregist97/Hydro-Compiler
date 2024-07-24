@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/arregist97/Hydro-Compiler/tokenizer"
 )
 
 func main() {
@@ -50,7 +52,7 @@ func main() {
 
 func tokenize(content string) []string {
 	var empty []string
-	test := recTokenize(content, empty)
+	test := tokenizer.recTokenize(content, empty)
 	fmt.Println(test)
 	re := regexp.MustCompile(`([\s()])`)
 
