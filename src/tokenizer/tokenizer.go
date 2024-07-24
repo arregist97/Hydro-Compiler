@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-func recTokenize(content string, tokens []string) []string {
+func RecTokenize(content string, tokens []string) []string {
 	var token string
 	var updatedContent string
 	var err error
@@ -20,7 +20,7 @@ func recTokenize(content string, tokens []string) []string {
 		tokens = append(tokens, token)
 	}
 	if len(content) > 0 {
-		return recTokenize(updatedContent, tokens)
+		return RecTokenize(updatedContent, tokens)
 	}
 	return tokens
 }

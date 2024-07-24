@@ -52,7 +52,7 @@ func main() {
 
 func tokenize(content string) []string {
 	var empty []string
-	test := tokenizer.recTokenize(content, empty)
+	test := tokenizer.RecTokenize(content, empty)
 	fmt.Println(test)
 	re := regexp.MustCompile(`([\s()])`)
 
