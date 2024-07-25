@@ -6,6 +6,12 @@ import (
 	"unicode/utf8"
 )
 
+type parseTreeNode {
+	val string
+	left *parseTreeNode
+	right *parseTreeNode
+}
+
 func RecTokenize(content string, tokens []string) []string {
 	var token string
 	var updatedContent string
@@ -70,4 +76,14 @@ func isEndOfToken(a rune) bool {
 	return false
 }
 
-
+func buildParseTree(tokens []string) (*parseTreeNode, error) {
+	if len(tokens) <= 0 {
+		return nil, new error("No tokens left")
+	}
+	node := parseTreeNode{val: tokens[0]}
+	tree := buildParseTree(tokens[1:])
+	if tree != nil {
+		node.right = tree
+	}
+	return *node, nil
+}
