@@ -1,4 +1,4 @@
-Compiler for hydrogen written in Python
+Compiler for hydrogen written in Go
 
 Inspiration: https://github.com/orosmatthew/hydrogen-cpp
 
