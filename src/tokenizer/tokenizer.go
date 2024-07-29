@@ -3,19 +3,23 @@ package tokenizer
 import (
 	"errors"
 	"fmt"
+	"log"
+	"regexp"
 	"unicode/utf8"
 )
 
-type parseTreeNode struct {
+type tokenTreeNode struct {
 	val string
-	left *parseTreeNode
-	right *parseTreeNode
+	tokenType string
+	left *tokenTreeNode
+	right *tokenTreeNode
 }
 
-func PrintParseTree (node *parseTreeNode) {
-	fmt.Println(node.val)
+func PrintTokenTree (node *tokenTreeNode) {
+	fmt.Println("Type: ", node.tokenType)
+	fmt.Println("Val: ", node.val)
 	if(node.right != nil){
-		PrintParseTree(node.right)
+		PrintTokenTree(node.right)
 	}
 }
 
@@ -26,7 +30,7 @@ func RecTokenize(content string, tokens []string) []string {
 
 	token, updatedContent, err = buildToken(content)
 	if err != nil {
-		fmt.Println("Error reading file:", err)
+		log.Fatal("Error reading file:", err)
 	}
 	fmt.Println(token + "/end")
 	if len(token) > 0 {
@@ -83,14 +87,46 @@ func isEndOfToken(a rune) bool {
 	return false
 }
 
-func BuildParseTree(tokens []string) (*parseTreeNode) {
+func BuildTokenTree(tokens []string) *tokenTreeNode {
 	if len(tokens) <= 0 {
 		return nil
 	}
-	node := parseTreeNode{val: tokens[0]}
-	tree := BuildParseTree(tokens[1:])
+	val := tokens[0]
+	tokenType, err := validateToken(val)
+	if err != nil {
+		log.Fatal("Error building token tree: ", err)
+	}
+	node := tokenTreeNode{val: val, tokenType: tokenType}
+	tree := BuildTokenTree(tokens[1:])
 	if tree != nil {
 		node.right = tree
 	}
 	return &node
+}
+
+func validateToken(token string) (string, error) {
+	var statements = []string {"exit"}
+	var expressions = []string {"(", ")"}
+	var digitCheck = regexp.MustCompile(`^[0-9]+$`)
+
+	if stringInSlice(token, expressions) {
+		return "Expr", nil
+	}
+
+	if stringInSlice(token, statements) {
+		return "Stmt", nil
+	}
+	if digitCheck.MatchString(token) {
+		return "intLit", nil
+	}
+	return "", errors.New("Unable to parse token: `" + token + "`")
+}
+
+func stringInSlice(a string, list []string) bool {
+    for _, b := range list {
+        if b == a {
+            return true
+        }
+    }
+    return false
 }

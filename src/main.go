@@ -53,8 +53,8 @@ func tokenize(content string) []string {
 	var empty []string
 	testTokens := tokenizer.RecTokenize(content, empty)
 	fmt.Println(testTokens)
-	testTree := tokenizer.BuildParseTree(testTokens)
-	tokenizer.PrintParseTree(testTree)
+	testTree := tokenizer.BuildTokenTree(testTokens)
+	tokenizer.PrintTokenTree(testTree)
 	re := regexp.MustCompile(`([\s()])`)
 
 	content = re.ReplaceAllStringFunc(content, func(s string) string {
@@ -85,3 +85,15 @@ func parse(tokens []string) (string, error){
 	}
 	return "", errors.New("Could not parse" + token)
 }
+
+//func testParse(node *parseTree) (string, error) {
+//	var buffer string
+//	buffer = "global _start"
+//	buffer = buffer + "\n" + "_start:"
+//	return parseTree(node, buffer)
+//
+//}
+
+//func parseTree(node *parseTree, buffer string) (string, error){
+//
+//}
