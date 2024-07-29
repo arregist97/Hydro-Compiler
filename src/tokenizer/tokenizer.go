@@ -8,18 +8,18 @@ import (
 	"unicode/utf8"
 )
 
-type tokenTreeNode struct {
-	val string
-	tokenType string
-	left *tokenTreeNode
-	right *tokenTreeNode
+type TokenTreeNode struct {
+	Val string
+	TokenType []string
+	Left *TokenTreeNode
+	Right *TokenTreeNode
 }
 
-func PrintTokenTree (node *tokenTreeNode) {
-	fmt.Println("Type: ", node.tokenType)
-	fmt.Println("Val: ", node.val)
-	if(node.right != nil){
-		PrintTokenTree(node.right)
+func PrintTokenTree (node *TokenTreeNode) {
+	fmt.Println("Type: ", node.TokenType)
+	fmt.Println("Val: ", node.Val)
+	if(node.Right != nil){
+		PrintTokenTree(node.Right)
 	}
 }
 
@@ -87,7 +87,7 @@ func isEndOfToken(a rune) bool {
 	return false
 }
 
-func BuildTokenTree(tokens []string) *tokenTreeNode {
+func BuildTokenTree(tokens []string) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		return nil
 	}
@@ -96,30 +96,29 @@ func BuildTokenTree(tokens []string) *tokenTreeNode {
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
-	node := tokenTreeNode{val: val, tokenType: tokenType}
+	node := TokenTreeNode{Val: val, TokenType: tokenType}
 	tree := BuildTokenTree(tokens[1:])
 	if tree != nil {
-		node.right = tree
+		node.Right = tree
 	}
 	return &node
 }
 
-func validateToken(token string) (string, error) {
+func validateToken(token string) ([]string, error) {
 	var statements = []string {"exit"}
-	var expressions = []string {"(", ")"}
+	var expressionOperators = []string {"(", ")"}
 	var digitCheck = regexp.MustCompile(`^[0-9]+$`)
 
-	if stringInSlice(token, expressions) {
-		return "Expr", nil
+	if stringInSlice(token, expressionOperators) {
+		return []string{"Expr", "Term", "ExprOp"}, nil
 	}
-
 	if stringInSlice(token, statements) {
-		return "Stmt", nil
+		return []string{"Stmt"}, nil
 	}
 	if digitCheck.MatchString(token) {
-		return "intLit", nil
+		return []string{"Expr", "Term", "intLit"}, nil
 	}
-	return "", errors.New("Unable to parse token: `" + token + "`")
+	return []string{}, errors.New("Unable to identify token: `" + token + "`")
 }
 
 func stringInSlice(a string, list []string) bool {

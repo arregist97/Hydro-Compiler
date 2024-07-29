@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -25,13 +26,25 @@ func main() {
 		return
 	}
 
-	tokens := tokenize(string(content))
+	// tokens := tokenize(string(content))
 
-	buffer, err := parse(tokens)
+	// buffer, err := parse(tokens)
+	// if err != nil {
+	// 	fmt.Println("Parse error:", err)
+	// 	return
+	// }
+
+	var empty []string
+	tokens := tokenizer.RecTokenize(string(content), empty)
+	fmt.Println(tokens)
+	tree := tokenizer.BuildTokenTree(tokens)
+	tokenizer.PrintTokenTree(tree)
+
+	buffer, err := parseTree(tree)
 	if err != nil {
-		fmt.Println("Parse error:", err)
-		return
+		log.Fatal(err)
 	}
+	fmt.Println(buffer)
 
 	re := regexp.MustCompile(`\.[^.]+$`)
 	baseName := re.ReplaceAllString(fileName, "")
@@ -50,11 +63,6 @@ func main() {
 }
 
 func tokenize(content string) []string {
-	var empty []string
-	testTokens := tokenizer.RecTokenize(content, empty)
-	fmt.Println(testTokens)
-	testTree := tokenizer.BuildTokenTree(testTokens)
-	tokenizer.PrintTokenTree(testTree)
 	re := regexp.MustCompile(`([\s()])`)
 
 	content = re.ReplaceAllStringFunc(content, func(s string) string {
@@ -86,14 +94,47 @@ func parse(tokens []string) (string, error){
 	return "", errors.New("Could not parse" + token)
 }
 
-//func testParse(node *parseTree) (string, error) {
-//	var buffer string
-//	buffer = "global _start"
-//	buffer = buffer + "\n" + "_start:"
-//	return parseTree(node, buffer)
-//
-//}
+func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
+	var buffer string
+	buffer = "global _start"
+	buffer = buffer + "\n" + "_start:"
+	return evalStmt(node, buffer)
+}
 
-//func parseTree(node *parseTree, buffer string) (string, error){
-//
-//}
+func evalStmt(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
+	if node.TokenType[0] != "Stmt" {
+		return "", errors.New("Stmt expected. Recieved " + node.TokenType[0])
+	}
+	if node.Val == "exit" {
+		return evalExit(node.Right, buffer)
+	}
+	return "", errors.New("Undefined Stmt: " + node.Val)
+}
+
+func evalExit(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
+	if node.Val != "(" {
+		return "", errors.New("Expected `(` after exit")
+	}
+	buffer = buffer + "\n" + "  mov    rax, 60"
+	buffer, err := evalExpr(node.Right, buffer, "rdi")
+	buffer = buffer + "\n" + "  syscall"
+	return buffer, err
+}
+
+func evalExpr(node *tokenizer.TokenTreeNode, buffer string, register string) (string, error) {
+	if node.TokenType[0] != "Expr" {
+		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
+	}
+	if node.TokenType[1] == "Term" {
+		return evalTerm(node, buffer, register)
+	}
+	return "", errors.New("Invalid Expr: " + node.TokenType[1])
+}
+
+func evalTerm(node *tokenizer.TokenTreeNode, buffer string, register string) (string, error) {
+	if node.TokenType[2] == "intLit" {
+		buffer = buffer + "\n" + "  mov    " + register + ", " + node.Val
+		return buffer, nil
+	}
+	return "", errors.New("Invalid Term: " + node.TokenType[2])
+}
