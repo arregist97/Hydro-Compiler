@@ -116,7 +116,7 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 		return "", errors.New("Expected `(` after exit")
 	}
 	buffer = buffer + "\n" + "  mov    rax, 60"
-	buffer, err := evalExpr(node.Right, buffer, "rdi")
+	buffer, err := evalExpr(node, buffer, "rdi")
 	buffer = buffer + "\n" + "  syscall"
 	return buffer, err
 }
@@ -127,6 +127,9 @@ func evalExpr(node *tokenizer.TokenTreeNode, buffer string, register string) (st
 	}
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, register)
+	}
+	if node.Val == "(" {
+		return evalExpr(node.Right, buffer, register)
 	}
 	return "", errors.New("Invalid Expr: " + node.TokenType[1])
 }

@@ -18,7 +18,12 @@ type TokenTreeNode struct {
 func PrintTokenTree (node *TokenTreeNode) {
 	fmt.Println("Type: ", node.TokenType)
 	fmt.Println("Val: ", node.Val)
-	if(node.Right != nil){
+	if node.Left != nil {
+		fmt.Println("{")
+		PrintTokenTree(node.Left)
+		fmt.Println("}")
+	}
+	if node.Right != nil {
 		PrintTokenTree(node.Right)
 	}
 }
@@ -58,7 +63,11 @@ func buildToken(content string, iOpt ...uint8) (string, string, error) {
 
 	r, s := utf8.DecodeRuneInString(content[i:])
 	if r == utf8.RuneError {
-		return "", "", errors.New("Could not recognize token " + content[i:i+1]) 
+		if s == 1 {
+			return "", "", errors.New("Could not recognize token " + content[i:i+1]) 
+		} else {
+			return "", "", errors.New("Empty decode error")
+		}
 	}
 
 	size := uint8(s)
@@ -89,7 +98,7 @@ func isEndOfToken(a rune) bool {
 
 func BuildTokenTree(tokens []string) *TokenTreeNode {
 	if len(tokens) <= 0 {
-		return nil
+		return &TokenTreeNode{Val: "EOF", TokenType: []string {"Stmt", "StmtTm"}}
 	}
 	val := tokens[0]
 	tokenType, err := validateToken(val)
@@ -97,26 +106,67 @@ func BuildTokenTree(tokens []string) *TokenTreeNode {
 		log.Fatal("Error building token tree: ", err)
 	}
 	node := TokenTreeNode{Val: val, TokenType: tokenType}
-	tree := BuildTokenTree(tokens[1:])
-	if tree != nil {
-		node.Right = tree
+	var offset int = 0
+	if node.Val == "(" {
+		expr, dist := buildExpr(tokens[1:], offset)
+		node.Left = expr
+		offset = dist
 	}
+	tree := BuildTokenTree(tokens[1+offset:])
+	node.Right = tree
 	return &node
 }
 
+func buildExpr(tokens []string, dist int) (*TokenTreeNode, int) {
+	if len(tokens) <= 0 {
+		log.Fatal("Unexpected end of file.")
+	}
+	val := tokens[0]
+	tokenType, err := validateToken(val)
+	if err != nil {
+		log.Fatal("Error building token tree: ", err)
+	}
+	node := TokenTreeNode{Val: val, TokenType: tokenType}
+	dist++
+	var offset int = 0
+	if node.Val == "(" {
+		expr, exprDist := buildExpr(tokens[1:], offset)
+		node.Left = expr
+		offset = exprDist
+		dist = dist + exprDist
+	} else if node.Val == ")" {
+		return &node, dist
+	}
+	tree, dist := buildExpr(tokens[1+offset:], dist)
+	node.Right = tree
+	return &node, dist
+}
+
 func validateToken(token string) ([]string, error) {
-	var statements = []string {"exit"}
+	var statements = []string {"exit", "let"}
 	var expressionOperators = []string {"(", ")"}
+	var statementTerminators = []string {"\n", ";"}
 	var digitCheck = regexp.MustCompile(`^[0-9]+$`)
+	var varCheck = regexp.MustCompile(`\b[_a-zA-Z][_a-zA-Z0-9]*\b`)
 
 	if stringInSlice(token, expressionOperators) {
-		return []string{"Expr", "Term", "ExprOp"}, nil
+		return []string{"Expr", "ExprOp"}, nil
+	}
+	if token == "=" {
+		return []string{"Stmt", "StmtOp"}, nil
+	}
+	if stringInSlice(token, statementTerminators) {
+		return []string{"Stmt", "StmtTm"}, nil
 	}
 	if stringInSlice(token, statements) {
 		return []string{"Stmt"}, nil
 	}
 	if digitCheck.MatchString(token) {
 		return []string{"Expr", "Term", "intLit"}, nil
+	}
+
+	if varCheck.MatchString(token) {
+		return []string{"Expr", "Term", "ident"}, nil
 	}
 	return []string{}, errors.New("Unable to identify token: `" + token + "`")
 }
