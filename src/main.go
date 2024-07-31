@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/arregist97/Hydro-Compiler/tokenizer"
 )
@@ -25,14 +24,6 @@ func main() {
 		fmt.Println("Error reading file:", err)
 		return
 	}
-
-	// tokens := tokenize(string(content))
-
-	// buffer, err := parse(tokens)
-	// if err != nil {
-	// 	fmt.Println("Parse error:", err)
-	// 	return
-	// }
 
 	var empty []string
 	tokens := tokenizer.RecTokenize(string(content), empty)
@@ -62,38 +53,6 @@ func main() {
 	}
 }
 
-func tokenize(content string) []string {
-	re := regexp.MustCompile(`([\s()])`)
-
-	content = re.ReplaceAllStringFunc(content, func(s string) string {
-		if s == "(" {
-			return s + " "
-		}
-		return " " + s + " "
-	})
-
-	parsedContent := strings.Fields(content)
-	fmt.Println(parsedContent)
-
-	return parsedContent
-}
-
-func parse(tokens []string) (string, error){
-	var buffer string
-	var token string
-	buffer = "global _start"
-	buffer = buffer + "\n" + "_start:"
-	token, tokens = tokens[0], tokens[1:]
-	if token == "exit(" {
-		buffer = buffer + "\n" + "  mov    rax, 60"
-		number := tokens[0]
-		buffer = buffer + "\n" + "  mov    rdi, " + number
-		buffer = buffer + "\n" + "  syscall"
-		return buffer, nil
-	}
-	return "", errors.New("Could not parse" + token)
-}
-
 func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
 	var buffer string
 	buffer = "global _start"
@@ -105,8 +64,17 @@ func evalStmt(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 	if node.TokenType[0] != "Stmt" {
 		return "", errors.New("Stmt expected. Recieved " + node.TokenType[0])
 	}
+	if node.Val == "EOF" {
+		return buffer, nil
+	}
+	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
+		return evalStmt(node.Right, buffer)
+	}
 	if node.Val == "exit" {
 		return evalExit(node.Right, buffer)
+	}
+	if node.Val == "let" {
+		return evalLet(node.Right, buffer)
 	}
 	return "", errors.New("Undefined Stmt: " + node.Val)
 }
@@ -115,29 +83,59 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 	if node.Val != "(" {
 		return "", errors.New("Expected `(` after exit")
 	}
+	buffer, err := evalExpr(node, buffer)
 	buffer = buffer + "\n" + "  mov    rax, 60"
-	buffer, err := evalExpr(node, buffer, "rdi")
+	buffer = buffer + "\n" + "  pop    rdi"
 	buffer = buffer + "\n" + "  syscall"
 	return buffer, err
 }
 
-func evalExpr(node *tokenizer.TokenTreeNode, buffer string, register string) (string, error) {
+func evalLet(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
+	if len(node.TokenType) > 2 && node.TokenType[2] != "ident" {
+		log.Fatal("Improper declaration")
+	}
+	if node.Right.Val != "=" {
+		log.Fatal("Expected '='")
+	}
+	//ToDo
+	return "", nil
+}
+
+func evalExpr(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 	if node.TokenType[0] != "Expr" {
+		fmt.Println("Node val: " + node.Val)
 		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
 	}
 	if node.TokenType[1] == "Term" {
-		return evalTerm(node, buffer, register)
+		return evalTerm(node, buffer)
 	}
 	if node.Val == "(" {
-		return evalExpr(node.Right, buffer, register)
+		buf, err := evalExpr(node.Left, buffer)
+		if err != nil {
+			return "", err
+		}
+		return evalTerminator(node.Right, buf)
 	}
 	return "", errors.New("Invalid Expr: " + node.TokenType[1])
 }
 
-func evalTerm(node *tokenizer.TokenTreeNode, buffer string, register string) (string, error) {
+func evalTerm(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 	if node.TokenType[2] == "intLit" {
-		buffer = buffer + "\n" + "  mov    " + register + ", " + node.Val
+		buffer = buffer + "\n" + "  mov    rax, " + node.Val
+		buffer = buffer + "\n" + "  push   rax"
 		return buffer, nil
 	}
+	if node.TokenType[2] == "ident" {
+	}
 	return "", errors.New("Invalid Term: " + node.TokenType[2])
+}
+
+func evalTerminator(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
+	if node == nil || node.Val == ")" {
+		return buffer, nil
+	}
+	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
+		return evalStmt(node.Right, buffer)
+	}
+	return "", errors.New("Invalid Terminator: " + node.Val)
 }
