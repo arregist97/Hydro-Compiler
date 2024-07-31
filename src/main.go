@@ -61,17 +61,25 @@ func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
 }
 
 func evalStmt(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
+	fmt.Println("Val: " + node.Val)
 	if node.TokenType[0] != "Stmt" {
 		return "", errors.New("Stmt expected. Recieved " + node.TokenType[0])
 	}
 	if node.Val == "EOF" {
+		buffer = buffer + "\n" + "  mov    rax, 60"
+		buffer = buffer + "\n" + "  mov    rdi, 0"
+		buffer = buffer + "\n" + "  syscall"
 		return buffer, nil
 	}
 	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
 		return evalStmt(node.Right, buffer)
 	}
 	if node.Val == "exit" {
-		return evalExit(node.Right, buffer)
+		buffer, err := evalExit(node.Left, buffer)
+		if err != nil {
+			return "", err
+		}
+		return evalStmt(node.Right, buffer)
 	}
 	if node.Val == "let" {
 		return evalLet(node.Right, buffer)
@@ -84,10 +92,13 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 		return "", errors.New("Expected `(` after exit")
 	}
 	buffer, err := evalExpr(node, buffer)
+	if err != nil {
+		return "", err
+	}
 	buffer = buffer + "\n" + "  mov    rax, 60"
 	buffer = buffer + "\n" + "  pop    rdi"
 	buffer = buffer + "\n" + "  syscall"
-	return buffer, err
+	return evalTerminator(node.Right, buffer)
 }
 
 func evalLet(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
@@ -110,11 +121,7 @@ func evalExpr(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 		return evalTerm(node, buffer)
 	}
 	if node.Val == "(" {
-		buf, err := evalExpr(node.Left, buffer)
-		if err != nil {
-			return "", err
-		}
-		return evalTerminator(node.Right, buf)
+		return evalExpr(node.Left, buffer)
 	}
 	return "", errors.New("Invalid Expr: " + node.TokenType[1])
 }
@@ -126,6 +133,7 @@ func evalTerm(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 		return buffer, nil
 	}
 	if node.TokenType[2] == "ident" {
+		//ToDo
 	}
 	return "", errors.New("Invalid Term: " + node.TokenType[2])
 }

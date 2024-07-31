@@ -108,16 +108,21 @@ func BuildTokenTree(tokens []string) *TokenTreeNode {
 	node := TokenTreeNode{Val: val, TokenType: tokenType}
 	var offset int = 0
 	if node.Val == "(" {
-		expr, dist := buildExpr(tokens[1:], offset)
+		expr, dist := buildExpr(tokens[1:], offset, true)
+		node.Left = expr
+		offset = dist
+	} else if stringInSlice(node.Val, []string{"exit", "="}) {
+		expr, dist := buildExpr(tokens[1:], offset, false)
 		node.Left = expr
 		offset = dist
 	}
+
 	tree := BuildTokenTree(tokens[1+offset:])
 	node.Right = tree
 	return &node
 }
 
-func buildExpr(tokens []string, dist int) (*TokenTreeNode, int) {
+func buildExpr(tokens []string, dist int, paren bool) (*TokenTreeNode, int) {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
@@ -126,18 +131,21 @@ func buildExpr(tokens []string, dist int) (*TokenTreeNode, int) {
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
+	if !paren && len(tokenType) > 1 && tokenType[1] == "StmtTm" {
+		return nil, dist
+	}
 	node := TokenTreeNode{Val: val, TokenType: tokenType}
 	dist++
 	var offset int = 0
 	if node.Val == "(" {
-		expr, exprDist := buildExpr(tokens[1:], offset)
+		expr, exprDist := buildExpr(tokens[1:], offset, true)
 		node.Left = expr
 		offset = exprDist
 		dist = dist + exprDist
-	} else if node.Val == ")" {
+	} else if node.Val == ")" && paren {
 		return &node, dist
 	}
-	tree, dist := buildExpr(tokens[1+offset:], dist)
+	tree, dist := buildExpr(tokens[1+offset:], dist, paren)
 	node.Right = tree
 	return &node, dist
 }
