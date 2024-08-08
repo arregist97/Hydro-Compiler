@@ -1,2 +1,3 @@
 let x = 7
-exit(4)
+let y = 8
+exit(y)

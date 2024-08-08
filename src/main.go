@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"strconv"
 
 	"github.com/arregist97/Hydro-Compiler/tokenizer"
 )
@@ -37,9 +40,11 @@ func main() {
 	}
 	fmt.Println(buffer)
 
+	fileName = filepath.Base(fileName)
 	re := regexp.MustCompile(`\.[^.]+$`)
 	baseName := re.ReplaceAllString(fileName, "")
-	newFileName := baseName + ".asm"
+	directory := "../build/"
+	newFileName := directory + baseName + ".asm"
 
 	newFile, err := os.Create(newFileName)
 	if err != nil {
@@ -50,6 +55,19 @@ func main() {
 	_, err = newFile.WriteString(buffer)
 	if err != nil {
 		fmt.Println("failed to write to new file: %w", err)
+	}
+
+	// Example Unix command: cat the file
+	fmt.Println("nasm -felf64", newFileName)
+	cmd := exec.Command("nasm -felf64", newFileName)
+
+	// Attach the command's output to the current process's standard output
+	cmd.Stdout = os.Stdout
+
+	// Run the command
+	err = cmd.Run()
+	if err != nil {
+		log.Fatal("command execution failed: %w", err)
 	}
 }
 
@@ -69,7 +87,7 @@ func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
 }
 
 func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
-	fmt.Println("Val: " + node.Val)
+	fmt.Println("Evaluating statement " + node.Val + "...")
 	if node.TokenType[0] != "Stmt" {
 		return "", errors.New("Stmt expected. Recieved " + node.TokenType[0])
 	}
@@ -130,9 +148,8 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 		return "", nil
 	}
 	buffer = buf
-	
 
-	state.lookupTbl[node.Val] = state.stackPtr - 1
+	state.lookupTbl[node.Val] = state.stackPtr
 	return buffer, nil
 }
 
@@ -156,7 +173,15 @@ func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 		buffer = buffer + "\n" + "  push   rax"
 		state.stackPtr++
 	} else if node.TokenType[2] == "ident" {
-		//ToDo
+		stackLoc, validIdent := state.lookupTbl[node.Val]
+		if !validIdent {
+			return "", errors.New("Undeclared ident " + node.Val)
+		}
+		fmt.Println("Stack Pointer", state.stackPtr, "var location", stackLoc)
+		stackOffset := (state.stackPtr - stackLoc) * 8
+		fmt.Println(stackOffset)
+		buffer = buffer + "\n" + "  push   QWORD [rsp + " + strconv.Itoa(stackOffset) + "]"
+		state.stackPtr++
 	} else {
 		return "", errors.New("Invalid Term: " + node.TokenType[2])
 	}
