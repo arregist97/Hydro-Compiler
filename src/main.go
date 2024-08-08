@@ -75,22 +75,23 @@ func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 		buffer = buffer + "\n" + "  mov    rax, 60"
 		buffer = buffer + "\n" + "  mov    rdi, 0"
 		buffer = buffer + "\n" + "  syscall"
-		return buffer, nil
+		return buffer, state, nil
 	}
 	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
 		return evalStmt(node.Right, buffer, state)
 	}
 	if node.Val == "exit" {
-		buffer, state, err := evalExit(node.Left, buffer, state)
+		buf, st, err := evalExit(node.Left, buffer, state)
 		if err != nil {
-			return "", err
+			return "", st, err
 		}
-		return evalStmt(node.Right, buffer, state)
-	}
-	if node.Val == "let" {
+		buffer = buf
+	} else if node.Val == "let" {
 		return evalLet(node.Right, buffer, state)
+	} else {
+		return "", state, errors.New("Undefined Stmt: " + node.Val)
 	}
-	return "", state, errors.New("Undefined Stmt: " + node.Val)
+	return evalTerminator(node.Right, buffer, state) 
 }
 
 func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
@@ -104,7 +105,7 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 	buffer = buffer + "\n" + "  mov    rax, 60"
 	buffer = buffer + "\n" + "  pop    rdi"
 	buffer = buffer + "\n" + "  syscall"
-	return evalTerminator(node.Right, buffer, state)
+	return buffer, state, nil
 }
 
 func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
@@ -115,7 +116,7 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 		log.Fatal("Expected '='")
 	}
 	//ToDo
-	return "", nil
+	return "", state, nil
 }
 
 func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, *state, error) {
@@ -149,6 +150,9 @@ func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 
 func evalTerminator(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
 	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
+		if node.Val == "EOF" {
+			evalStmt(node, buffer, state)
+		}
 		return evalStmt(node.Right, buffer, state)
 	}
 	return "", state, errors.New("Invalid Terminator: " + node.Val)
