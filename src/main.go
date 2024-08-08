@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	//"maps"
 	"os"
 	"regexp"
 
@@ -54,14 +55,16 @@ func main() {
 }
 
 type state struct {
-	//parenCount int
+	stackPtr int
+	lookupTbl map[string]int
 }
 
 func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
 	var buffer string
 	buffer = "global _start"
 	buffer = buffer + "\n" + "_start:"
-	state := state{}
+	table := make(map[string]int)
+	state := state{ stackPtr: 0, lookupTbl: table }
 	buffer, _, err := evalStmt(node, buffer, &state)
 	return buffer, err
 }
@@ -86,8 +89,15 @@ func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 			return "", st, err
 		}
 		buffer = buf
+		state = st
 	} else if node.Val == "let" {
-		return evalLet(node.Right, buffer, state)
+		buf, st, err := evalLet(node.Right, buffer, state)
+		if err != nil {
+			return "", st, err
+		}
+		buffer = buf
+		state = st
+		node = node.Right.Right
 	} else {
 		return "", state, errors.New("Undefined Stmt: " + node.Val)
 	}
@@ -105,6 +115,7 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 	buffer = buffer + "\n" + "  mov    rax, 60"
 	buffer = buffer + "\n" + "  pop    rdi"
 	buffer = buffer + "\n" + "  syscall"
+	state.stackPtr--
 	return buffer, state, nil
 }
 
@@ -115,8 +126,15 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	if node.Right.Val != "=" {
 		log.Fatal("Expected '='")
 	}
-	//ToDo
-	return "", state, nil
+	buf, st, err := evalExpr(node.Right.Left, buffer, state, false)
+	if err != nil {
+		return "", st, nil
+	}
+	buffer = buf
+	state = st
+
+	state.lookupTbl[node.Val] = state.stackPtr - 1
+	return buffer, state, nil
 }
 
 func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, *state, error) {
@@ -137,6 +155,7 @@ func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 	if node.TokenType[2] == "intLit" {
 		buffer = buffer + "\n" + "  mov    rax, " + node.Val
 		buffer = buffer + "\n" + "  push   rax"
+		state.stackPtr++
 	} else if node.TokenType[2] == "ident" {
 		//ToDo
 	} else {
