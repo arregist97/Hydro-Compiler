@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	//"maps"
 	"os"
 	"regexp"
 
@@ -65,93 +64,93 @@ func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
 	buffer = buffer + "\n" + "_start:"
 	table := make(map[string]int)
 	state := state{ stackPtr: 0, lookupTbl: table }
-	buffer, _, err := evalStmt(node, buffer, &state)
+	buffer, err := evalStmt(node, buffer, &state)
 	return buffer, err
 }
 
-func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
+func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
 	fmt.Println("Val: " + node.Val)
 	if node.TokenType[0] != "Stmt" {
-		return "", state, errors.New("Stmt expected. Recieved " + node.TokenType[0])
+		return "", errors.New("Stmt expected. Recieved " + node.TokenType[0])
 	}
 	if node.Val == "EOF" {
 		buffer = buffer + "\n" + "  mov    rax, 60"
 		buffer = buffer + "\n" + "  mov    rdi, 0"
 		buffer = buffer + "\n" + "  syscall"
-		return buffer, state, nil
+		return buffer, nil
 	}
 	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
 		return evalStmt(node.Right, buffer, state)
 	}
 	if node.Val == "exit" {
-		buf, st, err := evalExit(node.Left, buffer, state)
+		buf, err := evalExit(node.Left, buffer, state)
 		if err != nil {
-			return "", st, err
+			return "", err
 		}
 		buffer = buf
-		state = st
+		
 	} else if node.Val == "let" {
-		buf, st, err := evalLet(node.Right, buffer, state)
+		buf, err := evalLet(node.Right, buffer, state)
 		if err != nil {
-			return "", st, err
+			return "", err
 		}
 		buffer = buf
-		state = st
+		
 		node = node.Right.Right
 	} else {
-		return "", state, errors.New("Undefined Stmt: " + node.Val)
+		return "", errors.New("Undefined Stmt: " + node.Val)
 	}
 	return evalTerminator(node.Right, buffer, state) 
 }
 
-func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
+func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
 	if node.Val != "(" {
-		return "", state, errors.New("Expected `(` after exit")
+		return "", errors.New("Expected `(` after exit")
 	}
-	buffer, state, err := evalExpr(node, buffer, state, false)
+	buffer, err := evalExpr(node, buffer, state, false)
 	if err != nil {
-		return "", state, err
+		return "", err
 	}
 	buffer = buffer + "\n" + "  mov    rax, 60"
 	buffer = buffer + "\n" + "  pop    rdi"
 	buffer = buffer + "\n" + "  syscall"
 	state.stackPtr--
-	return buffer, state, nil
+	return buffer, nil
 }
 
-func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
+func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
 	if len(node.TokenType) > 2 && node.TokenType[2] != "ident" {
 		log.Fatal("Improper declaration")
 	}
 	if node.Right.Val != "=" {
 		log.Fatal("Expected '='")
 	}
-	buf, st, err := evalExpr(node.Right.Left, buffer, state, false)
+	buf, err := evalExpr(node.Right.Left, buffer, state, false)
 	if err != nil {
-		return "", st, nil
+		return "", nil
 	}
 	buffer = buf
-	state = st
+	
 
 	state.lookupTbl[node.Val] = state.stackPtr - 1
-	return buffer, state, nil
+	return buffer, nil
 }
 
-func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, *state, error) {
+func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
 	if node.TokenType[0] != "Expr" {
 		fmt.Println("Node val: " + node.Val)
-		return "", state, errors.New("Expr expected, recieved " + node.TokenType[0])
+		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
 	}
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, state, paren)
 	} else if node.Val == "(" {
 		return evalExpr(node.Left, buffer, state, true)
 	} else {
-		return "", state, errors.New("Invalid Expr: " + node.TokenType[1])
+		return "", errors.New("Invalid Expr: " + node.TokenType[1])
 	}
 }
 
-func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, *state, error) {
+func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
 	if node.TokenType[2] == "intLit" {
 		buffer = buffer + "\n" + "  mov    rax, " + node.Val
 		buffer = buffer + "\n" + "  push   rax"
@@ -159,20 +158,20 @@ func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 	} else if node.TokenType[2] == "ident" {
 		//ToDo
 	} else {
-		return "", state, errors.New("Invalid Term: " + node.TokenType[2])
+		return "", errors.New("Invalid Term: " + node.TokenType[2])
 	}
 	if paren && (node.Right == nil || node.Right.Val != ")") {
-		return "", state, errors.New("Expected ')'")
+		return "", errors.New("Expected ')'")
 	}
-	return buffer, state, nil
+	return buffer, nil
 }
 
-func evalTerminator(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, *state, error) {
+func evalTerminator(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
 	if len(node.TokenType) > 1 && node.TokenType[1] == "StmtTm" {
 		if node.Val == "EOF" {
 			evalStmt(node, buffer, state)
 		}
 		return evalStmt(node.Right, buffer, state)
 	}
-	return "", state, errors.New("Invalid Terminator: " + node.Val)
+	return "", errors.New("Invalid Terminator: " + node.Val)
 }
