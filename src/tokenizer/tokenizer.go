@@ -8,6 +8,57 @@ import (
 	"unicode/utf8"
 )
 
+type TokenTreeBlock struct {
+	Block *[]TokenTreeNode
+	I int
+	Next *TokenTreeBlock
+}
+
+func NewTokenTreeBlock() *TokenTreeBlock {
+	block := make([]TokenTreeNode, 100)
+	return &TokenTreeBlock{
+		Block: &block,
+		I: 0,
+	}
+}
+
+func AddTokenTreeNode(treeBlock *TokenTreeBlock, tokenType []string, val string) {
+	block := *treeBlock.Block
+	if treeBlock.I < cap(block) {
+		block[treeBlock.I].TokenType = tokenType
+		block[treeBlock.I].Val = val
+		treeBlock.I++
+	} else if treeBlock.Next != nil {
+		AddTokenTreeNode(treeBlock.Next, tokenType, val)
+	} else {
+		newTree := NewTokenTreeBlock()
+		treeBlock.Next = newTree
+		AddTokenTreeNode(newTree, tokenType, val)
+	}
+}
+
+func LinkTokenTreeNode(treeBlock *TokenTreeBlock, j int, right bool, next *TokenTreeNode) {
+	if next == nil {
+		return
+	}
+	block := *treeBlock.Block
+	if j > cap(block) {
+		if treeBlock.Next == nil {
+			log.Fatal("block overflow")
+		}
+		LinkTokenTreeNode(treeBlock.Next, j - cap(block), right, next)
+	} else {
+		fmt.Printf("Linking %s, %s to %s, %s\n", next.TokenType, next.Val, block[j].TokenType, block[j].Val)
+		if right {
+			fmt.Println("Right link")
+			block[j].Right = next
+		} else {
+			fmt.Println("Left link")
+			block[j].Left = next
+		}
+	}
+}
+
 type TokenTreeNode struct {
 	Val string
 	TokenType []string
@@ -96,33 +147,38 @@ func isEndOfToken(a rune) bool {
 	return false
 }
 
-func BuildTokenTree(tokens []string) *TokenTreeNode {
+func BuildTokenTree(block *TokenTreeBlock, tokens []string) *TokenTreeNode {
+	blockNodes := *block.Block
 	if len(tokens) <= 0 {
-		return &TokenTreeNode{Val: "EOF", TokenType: []string {"Stmt", "StmtTm"}}
+		nodeI := block.I
+		AddTokenTreeNode(block, []string {"Stmt", "StmtTm"}, "EOF")
+		return &blockNodes[nodeI]
 	}
 	val := tokens[0]
 	tokenType, err := validateToken(val)
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
-	node := TokenTreeNode{Val: val, TokenType: tokenType}
-	var offset int = 0
-	if node.Val == "(" {
-		expr, dist := buildExpr(tokens[1:], offset, true)
-		node.Left = expr
-		offset = dist
-	} else if stringInSlice(node.Val, []string{"exit", "="}) {
-		expr, dist := buildExpr(tokens[1:], offset, false)
-		node.Left = expr
-		offset = dist
+	var nodeI int = block.I
+	AddTokenTreeNode(block, tokenType, val)
+	fmt.Println("Printing Token")
+	PrintTokenTree(&blockNodes[nodeI])
+	if blockNodes[nodeI].Val == "(" {
+		fmt.Println("Entering Expr paren")
+		expr := buildExpr(block, tokens[1:], true)
+		LinkTokenTreeNode(block, nodeI, false, expr)
+	} else if stringInSlice(blockNodes[nodeI].Val, []string{"exit", "="}) {
+		fmt.Println("Entering Expr no paren")
+		expr := buildExpr(block, tokens[1:], false)
+		LinkTokenTreeNode(block, nodeI, false, expr)
 	}
-
-	tree := BuildTokenTree(tokens[1+offset:])
-	node.Right = tree
-	return &node
+	offset := block.I - nodeI
+	tree := BuildTokenTree(block, tokens[offset:])
+	LinkTokenTreeNode(block, nodeI, true, tree)
+	return &blockNodes[nodeI]
 }
 
-func buildExpr(tokens []string, dist int, paren bool) (*TokenTreeNode, int) {
+func buildExpr(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
@@ -132,22 +188,27 @@ func buildExpr(tokens []string, dist int, paren bool) (*TokenTreeNode, int) {
 		log.Fatal("Error building token tree: ", err)
 	}
 	if !paren && len(tokenType) > 1 && tokenType[1] == "StmtTm" {
-		return nil, dist
+		fmt.Print("Exiting Expr no paren")
+		return nil
 	}
-	node := TokenTreeNode{Val: val, TokenType: tokenType}
-	dist++
-	var offset int = 0
-	if node.Val == "(" {
-		expr, exprDist := buildExpr(tokens[1:], offset, true)
-		node.Left = expr
-		offset = exprDist
-		dist = dist + exprDist
-	} else if node.Val == ")" && paren {
-		return &node, dist
+	nodeI := block.I
+	AddTokenTreeNode(block, tokenType, val)
+	fmt.Println("Printing Token")
+	blockNodes := *block.Block
+	PrintTokenTree(&blockNodes[nodeI])
+
+	if blockNodes[nodeI].Val == "(" {
+		fmt.Println("Entering Expr paren")
+		expr := buildExpr(block, tokens[1:], true)
+		LinkTokenTreeNode(block, nodeI, false, expr)
+	} else if blockNodes[nodeI].Val == ")" && paren {
+		fmt.Println("Exiting Expr paren")
+		return &blockNodes[nodeI]
 	}
-	tree, dist := buildExpr(tokens[1+offset:], dist, paren)
-	node.Right = tree
-	return &node, dist
+	offset := block.I - nodeI
+	tree := buildExpr(block, tokens[offset:], paren)
+	LinkTokenTreeNode(block, nodeI, true, tree)
+	return &blockNodes[nodeI]
 }
 
 func validateToken(token string) ([]string, error) {
