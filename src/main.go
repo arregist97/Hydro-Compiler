@@ -33,10 +33,8 @@ func main() {
 	fmt.Println(tokens)
 	block := tokenizer.NewTokenTreeBlock()
 	tree := tokenizer.BuildTokenTree(block, tokens)
+	fmt.Println("\nToken Tree:")
 	tokenizer.PrintTokenTree(tree)
-	blockNodes := *block.Block
-	fmt.Println("Printing tree of first node.")
-	tokenizer.PrintTokenTree(&blockNodes[0])
 
 	buffer, err := parseTree(tree)
 	if err != nil {
@@ -162,13 +160,13 @@ func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 		fmt.Println("Node val: " + node.Val)
 		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
 	}
+	if node.Val == "(" {
+		return evalExpr(node.Left, buffer, state, true)
+	}
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, state, paren)
-	} else if node.Val == "(" {
-		return evalExpr(node.Left, buffer, state, true)
-	} else {
-		return "", errors.New("Invalid Expr: " + node.TokenType[1])
 	}
+	return "", errors.New("Invalid Expr: " + node.TokenType[1])
 }
 
 func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {

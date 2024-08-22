@@ -23,6 +23,7 @@ func NewTokenTreeBlock() *TokenTreeBlock {
 }
 
 func AddTokenTreeNode(treeBlock *TokenTreeBlock, tokenType []string, val string) {
+	//problem: if block.I is over capacity, we cannot use direct indexes. We need to make a public index and get method.
 	block := *treeBlock.Block
 	if treeBlock.I < cap(block) {
 		block[treeBlock.I].TokenType = tokenType
@@ -166,11 +167,31 @@ func BuildTokenTree(block *TokenTreeBlock, tokens []string) *TokenTreeNode {
 	if blockNodes[nodeI].Val == "(" {
 		fmt.Println("Entering Expr paren")
 		expr := buildExpr(block, tokens[1:], true)
-		LinkTokenTreeNode(block, nodeI, false, expr)
+		offset := block.I - nodeI
+		if isBinExpr(block, tokens[offset:]) {
+			opI := block.I - 1
+			opNode := &blockNodes[opI]
+			rhs := constructRhs(block, tokens[offset + 1:], true)
+			LinkTokenTreeNode(block, nodeI, false, opNode)
+			LinkTokenTreeNode(block, opI, false, expr)
+			LinkTokenTreeNode(block, opI, true, rhs)
+		} else {
+			LinkTokenTreeNode(block, nodeI, false, expr)
+		}
 	} else if stringInSlice(blockNodes[nodeI].Val, []string{"exit", "="}) {
 		fmt.Println("Entering Expr no paren")
 		expr := buildExpr(block, tokens[1:], false)
-		LinkTokenTreeNode(block, nodeI, false, expr)
+		offset := block.I - nodeI
+		if isBinExpr(block, tokens[offset:]) {
+			opI := block.I - 1
+			opNode := &blockNodes[opI]
+			rhs := constructRhs(block, tokens[offset + 1:], false)
+			LinkTokenTreeNode(block, nodeI, false, opNode)
+			LinkTokenTreeNode(block, opI, false, expr)
+			LinkTokenTreeNode(block, opI, true, rhs)
+		} else {
+			LinkTokenTreeNode(block, nodeI, false, expr)
+		}
 	}
 	offset := block.I - nodeI
 	tree := BuildTokenTree(block, tokens[offset:])
@@ -188,7 +209,11 @@ func buildExpr(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNod
 		log.Fatal("Error building token tree: ", err)
 	}
 	if !paren && len(tokenType) > 1 && tokenType[1] == "StmtTm" {
-		fmt.Print("Exiting Expr no paren")
+		fmt.Println("Exiting Expr no paren")
+		return nil
+	}
+	if len(tokenType) > 1 && tokenType[1] == "ExprOp" {
+		fmt.Println("Exiting Expr detected ExprOp")
 		return nil
 	}
 	nodeI := block.I
@@ -200,7 +225,17 @@ func buildExpr(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNod
 	if blockNodes[nodeI].Val == "(" {
 		fmt.Println("Entering Expr paren")
 		expr := buildExpr(block, tokens[1:], true)
-		LinkTokenTreeNode(block, nodeI, false, expr)
+		offset := block.I - nodeI
+		if isBinExpr(block, tokens[offset:]) {
+			opI := block.I - 1
+			opNode := &blockNodes[opI]
+			rhs := constructRhs(block, tokens[offset + 1:], true)
+			LinkTokenTreeNode(block, nodeI, false, opNode)
+			LinkTokenTreeNode(block, opI, false, expr)
+			LinkTokenTreeNode(block, opI, true, rhs)
+		} else {
+			LinkTokenTreeNode(block, nodeI, false, expr)
+		}
 	} else if blockNodes[nodeI].Val == ")" && paren {
 		fmt.Println("Exiting Expr paren")
 		return &blockNodes[nodeI]
@@ -211,9 +246,47 @@ func buildExpr(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNod
 	return &blockNodes[nodeI]
 }
 
+func isBinExpr(block *TokenTreeBlock, tokens []string) bool {
+	if len(tokens) <= 0 {
+		log.Fatal("Unexpected end of file.")
+	}
+	val := tokens[0]
+	tokenType, err := validateToken(val)
+	fmt.Println("Is BinExpr: " + val)
+	fmt.Println(tokenType)
+	if err != nil {
+		log.Fatal("Error checking for binary expression: ", err)
+	}
+	if len(tokenType) > 1 && tokenType[1] == "ExprOp" {
+		fmt.Println("True")
+		AddTokenTreeNode(block, tokenType, val)
+		return true
+	}
+	fmt.Println("False")
+	return false
+
+}
+
+func constructRhs(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNode{
+	blockNodes := *block.Block
+	baseI := block.I
+	expr := buildExpr(block, tokens, paren)
+	offset := block.I - baseI
+	if isBinExpr(block, tokens[offset:]) {
+		opI := block.I - 1
+		opNode := &blockNodes[opI]
+		rhs := constructRhs(block, tokens[offset + 1:], paren)
+		LinkTokenTreeNode(block, opI, false, expr)
+		LinkTokenTreeNode(block, opI, true, rhs)
+		return opNode
+	}
+	return expr
+}
+
 func validateToken(token string) ([]string, error) {
 	var statements = []string {"exit", "let"}
-	var expressionOperators = []string {"(", ")"}
+	var expressionOperators = []string {"+", "*"}
+	var paren = []string {"(", ")"}
 	var statementTerminators = []string {"\n", ";"}
 	var digitCheck = regexp.MustCompile(`^[0-9]+$`)
 	var varCheck = regexp.MustCompile(`\b[_a-zA-Z][_a-zA-Z0-9]*\b`)
@@ -230,10 +303,12 @@ func validateToken(token string) ([]string, error) {
 	if stringInSlice(token, statements) {
 		return []string{"Stmt"}, nil
 	}
+	if stringInSlice(token, paren) {
+		return []string{"Expr"}, nil
+	}
 	if digitCheck.MatchString(token) {
 		return []string{"Expr", "Term", "intLit"}, nil
 	}
-
 	if varCheck.MatchString(token) {
 		return []string{"Expr", "Term", "ident"}, nil
 	}
