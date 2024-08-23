@@ -147,7 +147,7 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	}
 	buf, err := evalExpr(node.Right.Left, buffer, state, false)
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 	buffer = buf
 
@@ -163,10 +163,32 @@ func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 	if node.Val == "(" {
 		return evalExpr(node.Left, buffer, state, true)
 	}
+	if node.TokenType[1] == "ExprOp" {
+		return evalBinExpr(node, buffer, state, paren)
+	}
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, state, paren)
 	}
 	return "", errors.New("Invalid Expr: " + node.TokenType[1])
+}
+
+func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
+	if node.Val == "+" {
+		buffer, err := evalExpr(node.Left, buffer, state, false)
+		if err != nil {
+			return "", err
+		}
+		buffer, err = evalExpr(node.Right, buffer, state, paren)
+		if err != nil {
+			return "", err
+		}
+		buffer = buffer + "\n" + "  pop    rax"
+		buffer = buffer + "\n" + "  pop    rbx"
+		buffer = buffer + "\n" + "  add    rax, rbx"
+		buffer = buffer + "\n" + "  push   rax"
+		return buffer, nil
+	}
+	return "", errors.New("Invalid BinExpr: " + node.Val)
 }
 
 func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
