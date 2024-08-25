@@ -8,54 +8,90 @@ import (
 	"unicode/utf8"
 )
 
-type TokenTreeBlock struct {
-	Block *[]TokenTreeNode
+type NodeStore struct {
 	I int
-	Next *TokenTreeBlock
+	Block *nodeBlock
 }
 
-func NewTokenTreeBlock() *TokenTreeBlock {
-	block := make([]TokenTreeNode, 100)
-	return &TokenTreeBlock{
-		Block: &block,
+func (n *NodeStore) AddNode(tokenType []string, val string) {
+	store := n.Block
+	store.addNode(tokenType, val, n.I)
+	n.I++
+}
+
+func (n *NodeStore) GetNode(index int) *TokenTreeNode {
+	store := n.Block
+	return store.getNode(index)
+}
+
+func (n *NodeStore) LinkNodes(j int, right bool, next *TokenTreeNode) {
+	if next == nil {
+		return
+	}
+	store := n.Block
+	store.linkNodes(j, right, next)
+}
+
+func NewNodeStore() *NodeStore {
+	return &NodeStore{
+		Block: newNodeBlock(),
 		I: 0,
 	}
 }
 
-func AddTokenTreeNode(treeBlock *TokenTreeBlock, tokenType []string, val string) {
-	//problem: if block.I is over capacity, we cannot use direct indexes. We need to make a public index and get method.
-	block := *treeBlock.Block
-	if treeBlock.I < cap(block) {
-		block[treeBlock.I].TokenType = tokenType
-		block[treeBlock.I].Val = val
-		treeBlock.I++
-	} else if treeBlock.Next != nil {
-		AddTokenTreeNode(treeBlock.Next, tokenType, val)
-	} else {
-		newTree := NewTokenTreeBlock()
-		treeBlock.Next = newTree
-		AddTokenTreeNode(newTree, tokenType, val)
+type nodeBlock struct {
+	nodes *[]TokenTreeNode
+	next *nodeBlock
+}
+
+func newNodeBlock() *nodeBlock {
+	nodes := make([]TokenTreeNode, 100)
+	return &nodeBlock{
+		nodes: &nodes,
 	}
 }
 
-func LinkTokenTreeNode(treeBlock *TokenTreeBlock, j int, right bool, next *TokenTreeNode) {
-	if next == nil {
-		return
-	}
-	block := *treeBlock.Block
-	if j > cap(block) {
-		if treeBlock.Next == nil {
-			log.Fatal("block overflow")
-		}
-		LinkTokenTreeNode(treeBlock.Next, j - cap(block), right, next)
+func (n *nodeBlock) addNode(tokenType []string, val string, index int) {
+	nodes := *n.nodes
+	if index < cap(nodes) {
+		nodes[index].TokenType = tokenType
+		nodes[index].Val = val
+	} else if n.next != nil {
+		n.next.addNode(tokenType, val, index - cap(nodes))
 	} else {
-		fmt.Printf("Linking %s, %s to %s, %s\n", next.TokenType, next.Val, block[j].TokenType, block[j].Val)
+		newBlock := newNodeBlock()
+		n.next = newBlock
+		n.next.addNode(tokenType, val, index - cap(nodes))
+	}
+}
+
+func (n *nodeBlock) getNode(index int) *TokenTreeNode {
+	nodes := *n.nodes
+	if index > cap(nodes) {
+		if n.next == nil {
+			log.Fatal("index overflow")
+		}
+		return n.next.getNode(index - cap(nodes))
+	} else {
+		return &nodes[index]
+	}
+}
+
+func (n *nodeBlock) linkNodes(j int, right bool, next *TokenTreeNode) {
+	nodes := *n.nodes
+	if j > cap(nodes) {
+		if n.next == nil {
+			log.Fatal("index overflow")
+		}
+		n.next.linkNodes(j - cap(nodes), right, next)
+	} else {
+		fmt.Printf("Linking %s, %s to %s, %s\n", next.TokenType, next.Val, nodes[j].TokenType, nodes[j].Val)
 		if right {
 			fmt.Println("Right link")
-			block[j].Right = next
+			nodes[j].Right = next
 		} else {
 			fmt.Println("Left link")
-			block[j].Left = next
+			nodes[j].Left = next
 		}
 	}
 }
@@ -67,16 +103,16 @@ type TokenTreeNode struct {
 	Right *TokenTreeNode
 }
 
-func PrintTokenTree (node *TokenTreeNode) {
+func (node *TokenTreeNode) PrintTokenTree () {
 	fmt.Println("Type: ", node.TokenType)
 	fmt.Println("Val: ", node.Val)
 	if node.Left != nil {
 		fmt.Println("{")
-		PrintTokenTree(node.Left)
+		node.Left.PrintTokenTree()
 		fmt.Println("}")
 	}
 	if node.Right != nil {
-		PrintTokenTree(node.Right)
+		node.Right.PrintTokenTree()
 	}
 }
 
@@ -148,58 +184,58 @@ func isEndOfToken(a rune) bool {
 	return false
 }
 
-func BuildTokenTree(block *TokenTreeBlock, tokens []string) *TokenTreeNode {
-	blockNodes := *block.Block
+func BuildTokenTree(store *NodeStore, tokens []string) *TokenTreeNode {
 	if len(tokens) <= 0 {
-		nodeI := block.I
-		AddTokenTreeNode(block, []string {"Stmt", "StmtTm"}, "EOF")
-		return &blockNodes[nodeI]
+		nodeI := store.I
+		store.AddNode([]string {"Stmt", "StmtTm"}, "EOF")
+		return store.GetNode(nodeI)
 	}
 	val := tokens[0]
 	tokenType, err := validateToken(val)
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
-	var nodeI int = block.I
-	AddTokenTreeNode(block, tokenType, val)
+	var nodeI int = store.I
+	store.AddNode(tokenType, val)
 	fmt.Println("Printing Token")
-	PrintTokenTree(&blockNodes[nodeI])
-	if blockNodes[nodeI].Val == "(" {
+	node := store.GetNode(nodeI)
+	node.PrintTokenTree()
+	if node.Val == "(" {
 		fmt.Println("Entering Expr paren")
-		expr := buildExpr(block, tokens[1:], true)
-		offset := block.I - nodeI
-		if isBinExpr(block, tokens[offset:]) {
-			opI := block.I - 1
-			opNode := &blockNodes[opI]
-			rhs := constructRhs(block, tokens[offset + 1:], true)
-			LinkTokenTreeNode(block, nodeI, false, opNode)
-			LinkTokenTreeNode(block, opI, false, expr)
-			LinkTokenTreeNode(block, opI, true, rhs)
+		expr := buildExpr(store, tokens[1:], true)
+		offset := store.I - nodeI
+		if isBinExpr(store, tokens[offset:]) {
+			opI := store.I - 1
+			opNode := store.GetNode(opI)
+			rhs := constructRhs(store, tokens[offset + 1:], true)
+			store.LinkNodes(nodeI, false, opNode)
+			store.LinkNodes(opI, false, expr)
+			store.LinkNodes(opI, true, rhs)
 		} else {
-			LinkTokenTreeNode(block, nodeI, false, expr)
+			store.LinkNodes(nodeI, false, expr)
 		}
-	} else if stringInSlice(blockNodes[nodeI].Val, []string{"exit", "="}) {
+	} else if stringInSlice(node.Val, []string{"exit", "="}) {
 		fmt.Println("Entering Expr no paren")
-		expr := buildExpr(block, tokens[1:], false)
-		offset := block.I - nodeI
-		if isBinExpr(block, tokens[offset:]) {
-			opI := block.I - 1
-			opNode := &blockNodes[opI]
-			rhs := constructRhs(block, tokens[offset + 1:], false)
-			LinkTokenTreeNode(block, nodeI, false, opNode)
-			LinkTokenTreeNode(block, opI, false, expr)
-			LinkTokenTreeNode(block, opI, true, rhs)
+		expr := buildExpr(store, tokens[1:], false)
+		offset := store.I - nodeI
+		if isBinExpr(store, tokens[offset:]) {
+			opI := store.I - 1
+			opNode := store.GetNode(opI)
+			rhs := constructRhs(store, tokens[offset + 1:], false)
+			store.LinkNodes(nodeI, false, opNode)
+			store.LinkNodes(opI, false, expr)
+			store.LinkNodes(opI, true, rhs)
 		} else {
-			LinkTokenTreeNode(block, nodeI, false, expr)
+			store.LinkNodes(nodeI, false, expr)
 		}
 	}
-	offset := block.I - nodeI
-	tree := BuildTokenTree(block, tokens[offset:])
-	LinkTokenTreeNode(block, nodeI, true, tree)
-	return &blockNodes[nodeI]
+	offset := store.I - nodeI
+	tree := BuildTokenTree(store, tokens[offset:])
+	store.LinkNodes(nodeI, true, tree)
+	return node
 }
 
-func buildExpr(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNode {
+func buildExpr(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
@@ -216,37 +252,37 @@ func buildExpr(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNod
 		fmt.Println("Exiting Expr detected ExprOp")
 		return nil
 	}
-	nodeI := block.I
-	AddTokenTreeNode(block, tokenType, val)
+	nodeI := store.I
+	store.AddNode(tokenType, val)
 	fmt.Println("Printing Token")
-	blockNodes := *block.Block
-	PrintTokenTree(&blockNodes[nodeI])
+	node := store.GetNode(nodeI)
+	node.PrintTokenTree()
 
-	if blockNodes[nodeI].Val == "(" {
+	if node.Val == "(" {
 		fmt.Println("Entering Expr paren")
-		expr := buildExpr(block, tokens[1:], true)
-		offset := block.I - nodeI
-		if isBinExpr(block, tokens[offset:]) {
-			opI := block.I - 1
-			opNode := &blockNodes[opI]
-			rhs := constructRhs(block, tokens[offset + 1:], true)
-			LinkTokenTreeNode(block, nodeI, false, opNode)
-			LinkTokenTreeNode(block, opI, false, expr)
-			LinkTokenTreeNode(block, opI, true, rhs)
+		expr := buildExpr(store, tokens[1:], true)
+		offset := store.I - nodeI
+		if isBinExpr(store, tokens[offset:]) {
+			opI := store.I - 1
+			opNode := store.GetNode(opI)
+			rhs := constructRhs(store, tokens[offset + 1:], true)
+			store.LinkNodes(nodeI, false, opNode)
+			store.LinkNodes(opI, false, expr)
+			store.LinkNodes(opI, true, rhs)
 		} else {
-			LinkTokenTreeNode(block, nodeI, false, expr)
+			store.LinkNodes(nodeI, false, expr)
 		}
-	} else if blockNodes[nodeI].Val == ")" && paren {
+	} else if node.Val == ")" && paren {
 		fmt.Println("Exiting Expr paren")
-		return &blockNodes[nodeI]
+		return node
 	}
-	offset := block.I - nodeI
-	tree := buildExpr(block, tokens[offset:], paren)
-	LinkTokenTreeNode(block, nodeI, true, tree)
-	return &blockNodes[nodeI]
+	offset := store.I - nodeI
+	tree := buildExpr(store, tokens[offset:], paren)
+	store.LinkNodes(nodeI, true, tree)
+	return node
 }
 
-func isBinExpr(block *TokenTreeBlock, tokens []string) bool {
+func isBinExpr(store *NodeStore, tokens []string) bool {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
@@ -259,7 +295,7 @@ func isBinExpr(block *TokenTreeBlock, tokens []string) bool {
 	}
 	if len(tokenType) > 1 && tokenType[1] == "ExprOp" {
 		fmt.Println("True")
-		AddTokenTreeNode(block, tokenType, val)
+		store.AddNode(tokenType, val)
 		return true
 	}
 	fmt.Println("False")
@@ -267,17 +303,16 @@ func isBinExpr(block *TokenTreeBlock, tokens []string) bool {
 
 }
 
-func constructRhs(block *TokenTreeBlock, tokens []string, paren bool) *TokenTreeNode{
-	blockNodes := *block.Block
-	baseI := block.I
-	expr := buildExpr(block, tokens, paren)
-	offset := block.I - baseI
-	if isBinExpr(block, tokens[offset:]) {
-		opI := block.I - 1
-		opNode := &blockNodes[opI]
-		rhs := constructRhs(block, tokens[offset + 1:], paren)
-		LinkTokenTreeNode(block, opI, false, expr)
-		LinkTokenTreeNode(block, opI, true, rhs)
+func constructRhs(store *NodeStore, tokens []string, paren bool) *TokenTreeNode{
+	baseI := store.I
+	expr := buildExpr(store, tokens, paren)
+	offset := store.I - baseI
+	if isBinExpr(store, tokens[offset:]) {
+		opI := store.I - 1
+		opNode := store.GetNode(opI)
+		rhs := constructRhs(store, tokens[offset + 1:], paren)
+		store.LinkNodes(opI, false, expr)
+		store.LinkNodes(opI, true, rhs)
 		return opNode
 	}
 	return expr

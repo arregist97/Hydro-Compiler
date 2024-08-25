@@ -31,10 +31,10 @@ func main() {
 	var empty []string
 	tokens := tokenizer.RecTokenize(string(content), empty)
 	fmt.Println(tokens)
-	block := tokenizer.NewTokenTreeBlock()
-	tree := tokenizer.BuildTokenTree(block, tokens)
+	store := tokenizer.NewNodeStore()
+	tree := tokenizer.BuildTokenTree(store, tokens)
 	fmt.Println("\nToken Tree:")
-	tokenizer.PrintTokenTree(tree)
+	tree.PrintTokenTree()
 
 	buffer, err := parseTree(tree)
 	if err != nil {
