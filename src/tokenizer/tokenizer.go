@@ -177,7 +177,7 @@ func buildToken(content string, iOpt ...uint8) (string, string, error) {
 }
 
 func isEndOfToken(a rune) bool {
-	var endOfTokenRunes = [...]rune {'(', ')', ' ', '\n'}
+	var endOfTokenRunes = [...]rune {'(', ')', ' ', '\n', '+', '*', '-', '/'}
 	for _, b := range endOfTokenRunes {
 		if b == a {
 			return true
@@ -307,8 +307,13 @@ func isBinExpr(store *NodeStore, tokens []string) bool {
 
 func constructRhs(store *NodeStore, tokens []string, paren bool) *TokenTreeNode{
 	baseI := store.I
+	fmt.Println("Entering expr of binexpr")
+	fmt.Println("Paren: ", paren)
 	expr := buildExpr(store, tokens, paren)
 	offset := store.I - baseI
+	if tokens[offset - 1] == ")" {
+		return expr
+	}
 	if isBinExpr(store, tokens[offset:]) {
 		opI := store.I - 1
 		opNode := store.GetNode(opI)
@@ -322,7 +327,7 @@ func constructRhs(store *NodeStore, tokens []string, paren bool) *TokenTreeNode{
 
 func validateToken(token string) ([]string, error) {
 	var statements = []string {"exit", "let"}
-	var expressionOperators = []string {"+", "*"}
+	var expressionOperators = []string {"+", "*", "-", "/"}
 	var paren = []string {"(", ")"}
 	var statementTerminators = []string {"\n", ";"}
 	var digitCheck = regexp.MustCompile(`^[0-9]+$`)

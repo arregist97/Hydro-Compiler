@@ -177,17 +177,15 @@ func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 
 func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool, prec int) (string, error) {
 	var err error
-	//lhs
 	buffer, err = evalExpr(node.Left, buffer, state, false, 0)
 	if err != nil {
 		return "", err
 	}
 	currNode := node
-	//while loop
 	for true {
 		currPrec := 0
 		op := currNode.Val
-		if op == "*" {
+		if op == "*" || op == "/" {
 			currPrec = 1
 		}
 		fmt.Println("Printing Tree ...")
@@ -196,7 +194,6 @@ func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, par
 			root = root.Root
 		}
 		root.PrintTokenTree()
-		//exit loop if not ExprOp or if prec is lower than the current precedence
 		if len(currNode.TokenType) <= 1 || currNode.TokenType[1] != "ExprOp" {
 			break
 		}
@@ -204,26 +201,38 @@ func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, par
 			break
 		}
 
-		//recursive call for rhs
+		currPrec++
+
 		buffer, err = evalExpr(currNode.Right, buffer, state, paren, currPrec)
 		if err != nil {
 			return "", err
 		}
-		//call the binary operation
 		if op == "+" {
-			buffer = buffer + "\n" + "  pop    rax"
 			buffer = buffer + "\n" + "  pop    rbx"
+			buffer = buffer + "\n" + "  pop    rax"
 			buffer = buffer + "\n" + "  add    rax, rbx"
 			buffer = buffer + "\n" + "  push   rax"
 			state.stackPtr--
 
 		} else if op == "*" {
-			buffer = buffer + "\n" + "  pop    rax"
 			buffer = buffer + "\n" + "  pop    rbx"
+			buffer = buffer + "\n" + "  pop    rax"
 			buffer = buffer + "\n" + "  mul    rbx"
 			buffer = buffer + "\n" + "  push   rax"
 			state.stackPtr--
-		} else {
+		} else if op == "-" {
+			buffer = buffer + "\n" + "  pop    rbx"
+			buffer = buffer + "\n" + "  pop    rax"
+			buffer = buffer + "\n" + "  sub    rax, rbx"
+			buffer = buffer + "\n" + "  push   rax"
+			state.stackPtr--
+		} else if op == "/" {
+			buffer = buffer + "\n" + "  pop    rbx"
+			buffer = buffer + "\n" + "  pop    rax"
+			buffer = buffer + "\n" + "  div    rbx"
+			buffer = buffer + "\n" + "  push   rax"
+			state.stackPtr--
+		}else {
 			return "", errors.New("Invalid BinExpr: " + op)
 		}
 
