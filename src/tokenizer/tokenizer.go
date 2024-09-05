@@ -93,6 +93,7 @@ func (n *nodeBlock) linkNodes(j int, right bool, next *TokenTreeNode) {
 			fmt.Println("Left link")
 			nodes[j].Left = next
 		}
+		next.Root = &nodes[j]
 	}
 }
 
@@ -101,6 +102,7 @@ type TokenTreeNode struct {
 	TokenType []string
 	Left *TokenTreeNode
 	Right *TokenTreeNode
+	Root *TokenTreeNode
 }
 
 func (node *TokenTreeNode) PrintTokenTree () {
@@ -357,4 +359,45 @@ func stringInSlice(a string, list []string) bool {
         }
     }
     return false
+}
+
+func ConsumeOperation(op *TokenTreeNode) error {
+	if op == nil {
+		return errors.New("ConsumeOperation: nil pointer")
+	}
+	if len(op.TokenType) <= 1 {
+		if op.TokenType[1] != "ExprOp" {
+			return errors.New("ConsumeOperation: Expected ExprOp, received " + op.TokenType[1])
+		}
+		return errors.New("ConsumeOperation: Expected ExprOp, received " + op.TokenType[0])
+	}
+	fmt.Println("Consume Op: ", op.Val)
+	fmt.Println("Op Tree:")
+	op.PrintTokenTree()
+	rhs := op.Right
+	if rhs == nil || rhs.TokenType[0] != "Expr" {
+		return errors.New("ConsumeOperation: Misconstructed binary operation")
+	}
+	val := "Stack Placeholder"
+	tokenType := []string {"Expr", "StkVr"}
+	if rhs.TokenType[1] == "ExprOp" {
+		rhs.Left.Val = val
+		rhs.Left.TokenType = tokenType
+	} else {
+		rhs.Val = val
+		rhs.TokenType = tokenType
+	}
+	root := op.Root
+	fmt.Println("Op Root:", root)
+	if root == nil {
+		return errors.New("ConsumeOperation: nil root")
+	}
+	if len(root.TokenType) > 1 && root.TokenType[1] == "ExprOp" {
+		root.Right = rhs
+		rhs.Root = root
+	} else {
+		root.Left = rhs
+		rhs.Root = root
+	}
+	return nil
 }

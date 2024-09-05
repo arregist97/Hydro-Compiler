@@ -127,7 +127,7 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 	if node.Val != "(" {
 		return "", errors.New("Expected `(` after exit")
 	}
-	buffer, err := evalExpr(node, buffer, state, false)
+	buffer, err := evalExpr(node, buffer, state, false, 0)
 	if err != nil {
 		return "", err
 	}
@@ -145,7 +145,7 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	if node.Right.Val != "=" {
 		log.Fatal("Expected '='")
 	}
-	buf, err := evalExpr(node.Right.Left, buffer, state, false)
+	buf, err := evalExpr(node.Right.Left, buffer, state, false, 0)
 	if err != nil {
 		return "", err
 	}
@@ -155,40 +155,94 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	return buffer, nil
 }
 
-func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
+func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool, prec int) (string, error) {
 	if node.TokenType[0] != "Expr" {
 		fmt.Println("Node val: " + node.Val)
 		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
 	}
 	if node.Val == "(" {
-		return evalExpr(node.Left, buffer, state, true)
-	}
-	if node.TokenType[1] == "ExprOp" {
-		return evalBinExpr(node, buffer, state, paren)
+		return evalExpr(node.Left, buffer, state, true, 0)
 	}
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, state, paren)
 	}
+	if node.TokenType[1] == "StkVr" {
+		return buffer, nil
+	}
+	if node.TokenType[1] == "ExprOp" {
+		return evalBinExpr(node, buffer, state, paren, prec)
+	}
 	return "", errors.New("Invalid Expr: " + node.TokenType[1])
 }
 
-func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
-	if node.Val == "+" {
-		buffer, err := evalExpr(node.Left, buffer, state, false)
-		if err != nil {
-			return "", err
-		}
-		buffer, err = evalExpr(node.Right, buffer, state, paren)
-		if err != nil {
-			return "", err
-		}
-		buffer = buffer + "\n" + "  pop    rax"
-		buffer = buffer + "\n" + "  pop    rbx"
-		buffer = buffer + "\n" + "  add    rax, rbx"
-		buffer = buffer + "\n" + "  push   rax"
-		return buffer, nil
+func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool, prec int) (string, error) {
+	var err error
+	//lhs
+	buffer, err = evalExpr(node.Left, buffer, state, false, 0)
+	if err != nil {
+		return "", err
 	}
-	return "", errors.New("Invalid BinExpr: " + node.Val)
+	currNode := node
+	//while loop
+	for true {
+		currPrec := 0
+		op := currNode.Val
+		if op == "*" {
+			currPrec = 1
+		}
+		fmt.Println("Printing Tree ...")
+		root := currNode
+		for root.Root.TokenType[0] == "Expr" {
+			root = root.Root
+		}
+		root.PrintTokenTree()
+		//exit loop if not ExprOp or if prec is lower than the current precedence
+		if len(currNode.TokenType) <= 1 || currNode.TokenType[1] != "ExprOp" {
+			break
+		}
+		if currPrec < prec {
+			break
+		}
+
+		//recursive call for rhs
+		buffer, err = evalExpr(currNode.Right, buffer, state, paren, currPrec)
+		if err != nil {
+			return "", err
+		}
+		//call the binary operation
+		if op == "+" {
+			buffer = buffer + "\n" + "  pop    rax"
+			buffer = buffer + "\n" + "  pop    rbx"
+			buffer = buffer + "\n" + "  add    rax, rbx"
+			buffer = buffer + "\n" + "  push   rax"
+			state.stackPtr--
+
+		} else if op == "*" {
+			buffer = buffer + "\n" + "  pop    rax"
+			buffer = buffer + "\n" + "  pop    rbx"
+			buffer = buffer + "\n" + "  mul    rbx"
+			buffer = buffer + "\n" + "  push   rax"
+			state.stackPtr--
+		} else {
+			return "", errors.New("Invalid BinExpr: " + op)
+		}
+
+		err = tokenizer.ConsumeOperation(currNode)
+		if err != nil {
+			return "", err
+		}
+
+		currNode = currNode.Right
+		if currNode != nil {
+			fmt.Println("New currNode: ", currNode.Val)
+		} else {
+			fmt.Println("Null val for currNode")
+		}
+
+	}
+	
+	
+	return buffer, nil
 }
 
 func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
