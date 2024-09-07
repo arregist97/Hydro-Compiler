@@ -46,31 +46,52 @@ func main() {
 	re := regexp.MustCompile(`\.[^.]+$`)
 	baseName := re.ReplaceAllString(fileName, "")
 	directory := "../build/"
-	newFileName := directory + baseName + ".asm"
+	newFileName := baseName + ".asm"
+	buildPath := directory + newFileName
 
-	newFile, err := os.Create(newFileName)
+	newFile, err := os.Create(buildPath)
 	if err != nil {
-		fmt.Println("failed to create new file: %w", err)
+		fmt.Println("failed to create new file: ", err)
 	}
 	defer newFile.Close()
 
 	_, err = newFile.WriteString(buffer)
 	if err != nil {
-		fmt.Println("failed to write to new file: %w", err)
+		fmt.Println("failed to write to new file: ", err)
 	}
 
-	// Example Unix command: cat the file
+	oFileName := baseName + ".o"
 	fmt.Println("nasm -felf64", newFileName)
-	cmd := exec.Command("nasm -felf64", newFileName)
+	nasmCmd := exec.Command("nasm", "-felf64", newFileName)
 
-	// Attach the command's output to the current process's standard output
-	cmd.Stdout = os.Stdout
+	nasmCmd.Dir = "../build"
 
-	// Run the command
-	err = cmd.Run()
+	nasmCmd.Stdout = os.Stdout
+	nasmCmd.Stderr = os.Stderr
+
+	// Run the nasm command
+	err = nasmCmd.Run()
 	if err != nil {
-		log.Fatal("command execution failed: %w", err)
+		log.Fatalf("nasm command execution failed: %v", err)
 	}
+
+	// Step 2: Run ld command
+	fmt.Println("Running ld test.o -o test")
+
+	// Create the ld command
+	ldCmd := exec.Command("ld", oFileName, "-o", baseName)
+	ldCmd.Dir = "../build"
+	ldCmd.Stdout = os.Stdout
+	ldCmd.Stderr = os.Stderr
+
+	// Run the ld command
+	err = ldCmd.Run()
+	if err != nil {
+		log.Fatalf("ld command execution failed: %v", err)
+	}
+
+	fmt.Println("Successfully assembled and linked the program.")
+
 }
 
 type state struct {
