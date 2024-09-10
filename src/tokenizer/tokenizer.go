@@ -348,6 +348,12 @@ func validateToken(token string) ([]string, error) {
 	if stringInSlice(token, paren) {
 		return []string{"Expr"}, nil
 	}
+	if token == "{" {
+		return []string{"Stmt", "Scope"}, nil
+	}
+	if token == "}" {
+		return []string{"Stmt", "ScopeTm"}, nil
+	}
 	if digitCheck.MatchString(token) {
 		return []string{"Expr", "Term", "intLit"}, nil
 	}

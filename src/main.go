@@ -96,15 +96,65 @@ func main() {
 
 type state struct {
 	stackPtr int
-	lookupTbl map[string]int
+	context []map[string]int
+	scopeI int
+}
+
+func (s *state) enterScope() {
+	newScope := make(map[string]int)
+	s.scopeI++
+	s.context = append(s.context, newScope)
+	fmt.Println("Enter new scope")
+	fmt.Println(s.context)
+}
+
+func (s *state) exitScope() {
+	s.context = s.context[:s.scopeI]
+	s.scopeI--
+	fmt.Println("Exit scope")
+	fmt.Println(s.context)
+}
+
+func (s *state) decVar(val string) {
+	scope := s.context[s.scopeI]
+	scope[val] = s.stackPtr
+}
+
+func (s *state) getVar(val string) (int, error) {
+	var scope map[string]int
+	var stackLoc int
+	var validIdent bool
+
+	fmt.Println("Retrieving var value")
+	fmt.Println(s.context)
+	for i := s.scopeI; i >= 0; i-- {
+		scope = s.context[i]
+		stackLoc, validIdent = scope[val]
+		if validIdent {
+			break
+		}
+	}
+	if !validIdent {
+		return 0, errors.New("Undeclared ident " + val)
+	}
+	return stackLoc, nil
+}
+
+func newState() state {
+	scope := make(map[string]int)
+	context := make([]map[string]int, 1)
+	context[0] = scope
+	s := state{ stackPtr: 0, context: context, scopeI: 0 }
+	fmt.Println("State create")
+	fmt.Println(s.context)
+	return s
 }
 
 func parseTree(node *tokenizer.TokenTreeNode) (string, error) {
 	var buffer string
 	buffer = "global _start"
 	buffer = buffer + "\n" + "_start:"
-	table := make(map[string]int)
-	state := state{ stackPtr: 0, lookupTbl: table }
+	state := newState()
 	buffer, err := evalStmt(node, buffer, &state)
 	return buffer, err
 }
@@ -138,6 +188,10 @@ func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 		buffer = buf
 		
 		node = node.Right.Right
+	} else if node.Val == "{" {
+		state.enterScope()
+	} else if node.Val == "}" {
+		state.exitScope()
 	} else {
 		return "", errors.New("Undefined Stmt: " + node.Val)
 	}
@@ -172,7 +226,7 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	}
 	buffer = buf
 
-	state.lookupTbl[node.Val] = state.stackPtr
+	state.decVar(node.Val)
 	return buffer, nil
 }
 
@@ -281,10 +335,11 @@ func evalTerm(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 		buffer = buffer + "\n" + "  push   rax"
 		state.stackPtr++
 	} else if node.TokenType[2] == "ident" {
-		stackLoc, validIdent := state.lookupTbl[node.Val]
-		if !validIdent {
-			return "", errors.New("Undeclared ident " + node.Val)
+		stackLoc, err := state.getVar(node.Val)
+		if err != nil {
+			return "", err
 		}
+
 		fmt.Println("Stack Pointer", state.stackPtr, "var location", stackLoc)
 		stackOffset := (state.stackPtr - stackLoc) * 8
 		fmt.Println(stackOffset)
@@ -305,6 +360,10 @@ func evalTerminator(node *tokenizer.TokenTreeNode, buffer string, state *state) 
 			evalStmt(node, buffer, state)
 		}
 		return evalStmt(node.Right, buffer, state)
+	}
+	if node.Val == "}" {
+		state.exitScope()
+		return evalTerminator(node.Right, buffer, state)
 	}
 	return "", errors.New("Invalid Terminator: " + node.Val)
 }
