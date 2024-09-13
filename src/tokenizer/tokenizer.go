@@ -186,7 +186,7 @@ func isEndOfToken(a rune) bool {
 	return false
 }
 
-func BuildTokenTree(store *NodeStore, tokens []string) *TokenTreeNode {
+func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		nodeI := store.I
 		store.AddNode([]string {"Stmt", "StmtTm"}, "EOF")
@@ -202,7 +202,16 @@ func BuildTokenTree(store *NodeStore, tokens []string) *TokenTreeNode {
 	fmt.Println("Printing Token")
 	node := store.GetNode(nodeI)
 	node.PrintTokenTree()
-	if node.Val == "(" {
+	if node.Val == "{" {
+		fmt.Println("Entering Scope")
+		scope := BuildTokenTree(store, tokens[1:], true)
+		store.LinkNodes(nodeI, false, scope)
+	} else if node.Val == "}" {
+		if !inScope {
+			log.Fatal("Out of scope")
+		}
+		return node
+	} else if node.Val == "(" {
 		fmt.Println("Entering Expr paren")
 		expr := buildExpr(store, tokens[1:], true)
 		offset := store.I - nodeI
@@ -216,7 +225,7 @@ func BuildTokenTree(store *NodeStore, tokens []string) *TokenTreeNode {
 		} else {
 			store.LinkNodes(nodeI, false, expr)
 		}
-	} else if stringInSlice(node.Val, []string{"exit", "="}) {
+	} else if stringInSlice(node.Val, []string{"exit", "=", "if"}) {
 		fmt.Println("Entering Expr no paren")
 		expr := buildExpr(store, tokens[1:], false)
 		offset := store.I - nodeI
@@ -232,7 +241,7 @@ func BuildTokenTree(store *NodeStore, tokens []string) *TokenTreeNode {
 		}
 	}
 	offset := store.I - nodeI
-	tree := BuildTokenTree(store, tokens[offset:])
+	tree := BuildTokenTree(store, tokens[offset:], inScope)
 	store.LinkNodes(nodeI, true, tree)
 	return node
 }
@@ -246,7 +255,7 @@ func buildExpr(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
-	if !paren && len(tokenType) > 1 && tokenType[1] == "StmtTm" {
+	if !paren && tokenType[0] != "Expr" {
 		fmt.Println("Exiting Expr no paren")
 		return nil
 	}
@@ -326,7 +335,7 @@ func constructRhs(store *NodeStore, tokens []string, paren bool) *TokenTreeNode{
 }
 
 func validateToken(token string) ([]string, error) {
-	var statements = []string {"exit", "let"}
+	var statements = []string {"exit", "let", "if"}
 	var expressionOperators = []string {"+", "*", "-", "/"}
 	var paren = []string {"(", ")"}
 	var statementTerminators = []string {"\n", ";"}

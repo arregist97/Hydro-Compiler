@@ -32,7 +32,7 @@ func main() {
 	tokens := tokenizer.RecTokenize(string(content), empty)
 	fmt.Println(tokens)
 	store := tokenizer.NewNodeStore()
-	tree := tokenizer.BuildTokenTree(store, tokens)
+	tree := tokenizer.BuildTokenTree(store, tokens, false)
 	fmt.Println("\nToken Tree:")
 	tree.PrintTokenTree()
 
@@ -98,21 +98,40 @@ type state struct {
 	stackPtr int
 	context []map[string]int
 	scopeI int
+	labelI int
 }
 
-func (s *state) enterScope() {
+func (s *state) enterScope(node *tokenizer.TokenTreeNode, buffer string) (string, error) {
 	newScope := make(map[string]int)
 	s.scopeI++
 	s.context = append(s.context, newScope)
+	s.decVar("{")
 	fmt.Println("Enter new scope")
 	fmt.Println(s.context)
+
+	buf, err := evalTerminator(node.Left, buffer, s)
+	if err != nil {
+		return "", err
+	}
+	buffer = buf
+	return buffer, nil
 }
 
-func (s *state) exitScope() {
+func (s *state) exitScope(buffer string) (string, error) {
+	scopeStkPtr, err := s.getVar("{")
+	if err != nil {
+		return "", errors.New("No scope to exit")
+	}
 	s.context = s.context[:s.scopeI]
 	s.scopeI--
 	fmt.Println("Exit scope")
 	fmt.Println(s.context)
+	stackDiff := s.stackPtr - scopeStkPtr
+	if stackDiff > 0 {
+		buffer = buffer + "\n" + "  add    rsp, " + strconv.Itoa(stackDiff * 8)
+		s.stackPtr = scopeStkPtr
+	}
+	return buffer, nil
 }
 
 func (s *state) decVar(val string) {
@@ -144,7 +163,7 @@ func newState() state {
 	scope := make(map[string]int)
 	context := make([]map[string]int, 1)
 	context[0] = scope
-	s := state{ stackPtr: 0, context: context, scopeI: 0 }
+	s := state{ stackPtr: 0, context: context, scopeI: 0, labelI: 0 }
 	fmt.Println("State create")
 	fmt.Println(s.context)
 	return s
@@ -188,10 +207,26 @@ func evalStmt(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 		buffer = buf
 		
 		node = node.Right.Right
+	} else if node.Val == "if" {
+		buf, err := evalIf(node, buffer, state)
+		if err != nil {
+			return "", err
+		}
+		buffer = buf
+		node = node.Right
 	} else if node.Val == "{" {
-		state.enterScope()
+		//enterScope needs to pass buffer and state back to evalStmt
+		buf, err := state.enterScope(node, buffer)
+		if err != nil {
+			return "", err
+		}
+		buffer = buf
 	} else if node.Val == "}" {
-		state.exitScope()
+		buffer, err := state.exitScope(buffer)
+		if err != nil {
+			return "", err
+		}
+		return buffer, nil
 	} else {
 		return "", errors.New("Undefined Stmt: " + node.Val)
 	}
@@ -227,6 +262,27 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	buffer = buf
 
 	state.decVar(node.Val)
+	return buffer, nil
+}
+
+func evalIf(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
+	buffer, err := evalExpr(node.Left, buffer, state, false, 0)
+	if err != nil {
+		return "", err
+	}
+	label := "label" + strconv.Itoa(state.labelI)
+	state.labelI++
+	buffer = buffer + "\n" + "  pop    rax"
+	buffer = buffer + "\n" + "  test   rax, rax"
+	buffer = buffer + "\n" + "  jz     " + label
+	state.stackPtr--
+
+	buffer, err = state.enterScope(node.Right, buffer)
+	if err != nil {
+		return "", err
+	}
+
+	buffer = buffer + "\n" + label + ":"
 	return buffer, nil
 }
 
@@ -362,7 +418,11 @@ func evalTerminator(node *tokenizer.TokenTreeNode, buffer string, state *state) 
 		return evalStmt(node.Right, buffer, state)
 	}
 	if node.Val == "}" {
-		state.exitScope()
+		buf, err := state.exitScope(buffer)
+		if err != nil {
+			return "", err
+		}
+		buffer = buf
 		return evalTerminator(node.Right, buffer, state)
 	}
 	return "", errors.New("Invalid Terminator: " + node.Val)
