@@ -177,7 +177,7 @@ func buildToken(content string, iOpt ...uint8) (string, string, error) {
 }
 
 func isEndOfToken(a rune) bool {
-	var endOfTokenRunes = [...]rune {'(', ')', ' ', '\n', '+', '*', '-', '/'}
+	var endOfTokenRunes = [...]rune {'(', ')', ' ', '\n', '=', '+', '*', '-', '/'}
 	for _, b := range endOfTokenRunes {
 		if b == a {
 			return true
@@ -213,32 +213,12 @@ func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeN
 		return node
 	} else if node.Val == "(" {
 		fmt.Println("Entering Expr paren")
-		expr := buildExpr(store, tokens[1:], true)
-		offset := store.I - nodeI
-		if isBinExpr(store, tokens[offset:]) {
-			opI := store.I - 1
-			opNode := store.GetNode(opI)
-			rhs := constructRhs(store, tokens[offset + 1:], true)
-			store.LinkNodes(nodeI, false, opNode)
-			store.LinkNodes(opI, false, expr)
-			store.LinkNodes(opI, true, rhs)
-		} else {
-			store.LinkNodes(nodeI, false, expr)
-		}
+		expr, _ := constructExpr(store, tokens[1:], true, 0)
+		store.LinkNodes(nodeI, false, expr)
 	} else if stringInSlice(node.Val, []string{"exit", "=", "if"}) {
 		fmt.Println("Entering Expr no paren")
-		expr := buildExpr(store, tokens[1:], false)
-		offset := store.I - nodeI
-		if isBinExpr(store, tokens[offset:]) {
-			opI := store.I - 1
-			opNode := store.GetNode(opI)
-			rhs := constructRhs(store, tokens[offset + 1:], false)
-			store.LinkNodes(nodeI, false, opNode)
-			store.LinkNodes(opI, false, expr)
-			store.LinkNodes(opI, true, rhs)
-		} else {
-			store.LinkNodes(nodeI, false, expr)
-		}
+		expr, _ := constructExpr(store, tokens[1:], false, 0)
+		store.LinkNodes(nodeI, false, expr)
 	}
 	offset := store.I - nodeI
 	tree := BuildTokenTree(store, tokens[offset:], inScope)
@@ -246,7 +226,7 @@ func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeN
 	return node
 }
 
-func buildExpr(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
+func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
@@ -271,24 +251,14 @@ func buildExpr(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
 
 	if node.Val == "(" {
 		fmt.Println("Entering Expr paren")
-		expr := buildExpr(store, tokens[1:], true)
-		offset := store.I - nodeI
-		if isBinExpr(store, tokens[offset:]) {
-			opI := store.I - 1
-			opNode := store.GetNode(opI)
-			rhs := constructRhs(store, tokens[offset + 1:], true)
-			store.LinkNodes(nodeI, false, opNode)
-			store.LinkNodes(opI, false, expr)
-			store.LinkNodes(opI, true, rhs)
-		} else {
-			store.LinkNodes(nodeI, false, expr)
-		}
+		expr, _ := constructExpr(store, tokens[1:], true, 0)
+		store.LinkNodes(nodeI, false, expr)
 	} else if node.Val == ")" && paren {
 		fmt.Println("Exiting Expr paren")
 		return node
 	}
 	offset := store.I - nodeI
-	tree := buildExpr(store, tokens[offset:], paren)
+	tree := constructAtom(store, tokens[offset:], paren)
 	store.LinkNodes(nodeI, true, tree)
 	return node
 }
@@ -306,7 +276,6 @@ func isBinExpr(store *NodeStore, tokens []string) bool {
 	}
 	if len(tokenType) > 1 && tokenType[1] == "ExprOp" {
 		fmt.Println("True")
-		store.AddNode(tokenType, val)
 		return true
 	}
 	fmt.Println("False")
@@ -314,24 +283,48 @@ func isBinExpr(store *NodeStore, tokens []string) bool {
 
 }
 
-func constructRhs(store *NodeStore, tokens []string, paren bool) *TokenTreeNode{
+func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (*TokenTreeNode, []string){
 	baseI := store.I
 	fmt.Println("Entering expr of binexpr")
 	fmt.Println("Paren: ", paren)
-	expr := buildExpr(store, tokens, paren)
+	expr := constructAtom(store, tokens, paren)
 	offset := store.I - baseI
 	if tokens[offset - 1] == ")" {
-		return expr
+		return expr, tokens[offset:]
 	}
-	if isBinExpr(store, tokens[offset:]) {
-		opI := store.I - 1
+	tokens = tokens[offset:]
+	firstI := true
+	for true {
+		if !isBinExpr(store, tokens) {
+			break
+		}
+		val := tokens[0]
+		tokenType, _ := validateToken(val)
+		currPrec := 0
+		if val == "*" || val == "/" {
+			currPrec = 1
+		}
+		if currPrec < minPrec {
+			break
+		}
+		opI := store.I
+		store.AddNode(tokenType, val)
 		opNode := store.GetNode(opI)
-		rhs := constructRhs(store, tokens[offset + 1:], paren)
-		store.LinkNodes(opI, false, expr)
-		store.LinkNodes(opI, true, rhs)
-		return opNode
+		currPrec = currPrec + 1
+		tokens = tokens[1:]
+		expr2, updatedTokens := constructExpr(store, tokens, paren, currPrec)
+		tokens = updatedTokens
+		if firstI {
+			store.LinkNodes(opI, false, expr)
+			store.LinkNodes(opI, true, expr2)
+		} else {
+			store.LinkNodes(opI, true, expr)
+			store.LinkNodes(opI, false, expr2)
+		}
+		expr = opNode
+		firstI = false
 	}
-	return expr
+	return expr, tokens
 }
 
 func validateToken(token string) ([]string, error) {
@@ -379,45 +372,4 @@ func stringInSlice(a string, list []string) bool {
         }
     }
     return false
-}
-
-func ConsumeOperation(op *TokenTreeNode) error {
-	if op == nil {
-		return errors.New("ConsumeOperation: nil pointer")
-	}
-	if len(op.TokenType) <= 1 {
-		if op.TokenType[1] != "ExprOp" {
-			return errors.New("ConsumeOperation: Expected ExprOp, received " + op.TokenType[1])
-		}
-		return errors.New("ConsumeOperation: Expected ExprOp, received " + op.TokenType[0])
-	}
-	fmt.Println("Consume Op: ", op.Val)
-	fmt.Println("Op Tree:")
-	op.PrintTokenTree()
-	rhs := op.Right
-	if rhs == nil || rhs.TokenType[0] != "Expr" {
-		return errors.New("ConsumeOperation: Misconstructed binary operation")
-	}
-	val := "Stack Placeholder"
-	tokenType := []string {"Expr", "StkVr"}
-	if rhs.TokenType[1] == "ExprOp" {
-		rhs.Left.Val = val
-		rhs.Left.TokenType = tokenType
-	} else {
-		rhs.Val = val
-		rhs.TokenType = tokenType
-	}
-	root := op.Root
-	fmt.Println("Op Root:", root)
-	if root == nil {
-		return errors.New("ConsumeOperation: nil root")
-	}
-	if len(root.TokenType) > 1 && root.TokenType[1] == "ExprOp" {
-		root.Right = rhs
-		rhs.Root = root
-	} else {
-		root.Left = rhs
-		rhs.Root = root
-	}
-	return nil
 }

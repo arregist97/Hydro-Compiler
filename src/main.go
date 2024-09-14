@@ -237,7 +237,7 @@ func evalExit(node *tokenizer.TokenTreeNode, buffer string, state *state) (strin
 	if node.Val != "(" {
 		return "", errors.New("Expected `(` after exit")
 	}
-	buffer, err := evalExpr(node, buffer, state, false, 0)
+	buffer, err := evalExpr(node, buffer, state, false)
 	if err != nil {
 		return "", err
 	}
@@ -255,7 +255,7 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 	if node.Right.Val != "=" {
 		log.Fatal("Expected '='")
 	}
-	buf, err := evalExpr(node.Right.Left, buffer, state, false, 0)
+	buf, err := evalExpr(node.Right.Left, buffer, state, false)
 	if err != nil {
 		return "", err
 	}
@@ -266,7 +266,7 @@ func evalLet(node *tokenizer.TokenTreeNode, buffer string, state *state) (string
 }
 
 func evalIf(node *tokenizer.TokenTreeNode, buffer string, state *state) (string, error) {
-	buffer, err := evalExpr(node.Left, buffer, state, false, 0)
+	buffer, err := evalExpr(node.Left, buffer, state, false)
 	if err != nil {
 		return "", err
 	}
@@ -286,13 +286,13 @@ func evalIf(node *tokenizer.TokenTreeNode, buffer string, state *state) (string,
 	return buffer, nil
 }
 
-func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool, prec int) (string, error) {
+func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
 	if node.TokenType[0] != "Expr" {
 		fmt.Println("Node val: " + node.Val)
 		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
 	}
 	if node.Val == "(" {
-		return evalExpr(node.Left, buffer, state, true, 0)
+		return evalExpr(node.Left, buffer, state, true)
 	}
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, state, paren)
@@ -301,86 +301,36 @@ func evalExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren 
 		return buffer, nil
 	}
 	if node.TokenType[1] == "ExprOp" {
-		return evalBinExpr(node, buffer, state, paren, prec)
+		return evalBinExpr(node, buffer, state, paren)
 	}
 	return "", errors.New("Invalid Expr: " + node.TokenType[1])
 }
 
-func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool, prec int) (string, error) {
+func evalBinExpr(node *tokenizer.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
 	var err error
-	buffer, err = evalExpr(node.Left, buffer, state, false, 0)
+	buffer, err = evalExpr(node.Left, buffer, state, false)
 	if err != nil {
 		return "", err
 	}
-	currNode := node
-	for true {
-		currPrec := 0
-		op := currNode.Val
-		if op == "*" || op == "/" {
-			currPrec = 1
-		}
-		fmt.Println("Printing Tree ...")
-		root := currNode
-		for root.Root.TokenType[0] == "Expr" {
-			root = root.Root
-		}
-		root.PrintTokenTree()
-		if len(currNode.TokenType) <= 1 || currNode.TokenType[1] != "ExprOp" {
-			break
-		}
-		if currPrec < prec {
-			break
-		}
-
-		currPrec++
-
-		buffer, err = evalExpr(currNode.Right, buffer, state, paren, currPrec)
-		if err != nil {
-			return "", err
-		}
-		if op == "+" {
-			buffer = buffer + "\n" + "  pop    rbx"
-			buffer = buffer + "\n" + "  pop    rax"
-			buffer = buffer + "\n" + "  add    rax, rbx"
-			buffer = buffer + "\n" + "  push   rax"
-			state.stackPtr--
-
-		} else if op == "*" {
-			buffer = buffer + "\n" + "  pop    rbx"
-			buffer = buffer + "\n" + "  pop    rax"
-			buffer = buffer + "\n" + "  mul    rbx"
-			buffer = buffer + "\n" + "  push   rax"
-			state.stackPtr--
-		} else if op == "-" {
-			buffer = buffer + "\n" + "  pop    rbx"
-			buffer = buffer + "\n" + "  pop    rax"
-			buffer = buffer + "\n" + "  sub    rax, rbx"
-			buffer = buffer + "\n" + "  push   rax"
-			state.stackPtr--
-		} else if op == "/" {
-			buffer = buffer + "\n" + "  pop    rbx"
-			buffer = buffer + "\n" + "  pop    rax"
-			buffer = buffer + "\n" + "  div    rbx"
-			buffer = buffer + "\n" + "  push   rax"
-			state.stackPtr--
-		}else {
-			return "", errors.New("Invalid BinExpr: " + op)
-		}
-
-		err = tokenizer.ConsumeOperation(currNode)
-		if err != nil {
-			return "", err
-		}
-
-		currNode = currNode.Right
-		if currNode != nil {
-			fmt.Println("New currNode: ", currNode.Val)
-		} else {
-			fmt.Println("Null val for currNode")
-		}
-
+	buffer, err = evalExpr(node.Right, buffer, state, paren)
+	if err != nil {
+		return "", err
 	}
-	
+	buffer = buffer + "\n" + "  pop    rax"
+	buffer = buffer + "\n" + "  pop    rbx"
+	if node.Val == "+" {
+		buffer = buffer + "\n" + "  add    rax, rbx"
+	} else if node.Val == "*" {
+		buffer = buffer + "\n" + "  mul    rbx"
+	} else if node.Val == "-" {
+		buffer = buffer + "\n" + "  sub    rax, rbx"
+	} else if node.Val == "/" {
+		buffer = buffer + "\n" + "  div    rbx"
+	}else {
+		return "", errors.New("Invalid BinExpr: " + node.Val)
+	}
+	buffer = buffer + "\n" + "  push   rax"
+	state.stackPtr--
 	
 	return buffer, nil
 }
