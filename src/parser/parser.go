@@ -146,7 +146,7 @@ func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeN
 		fmt.Println("Entering Expr paren")
 		expr, _ := constructExpr(store, tokens[1:], true, 0)
 		store.LinkNodes(nodeI, false, expr)
-	} else if stringInSlice(node.Val, []string{"exit", "=", "if"}) {
+	} else if stringInSlice(node.Val, []string{"exit", "=", "if", "elif"}) {
 		fmt.Println("Entering Expr no paren")
 		expr, _ := constructExpr(store, tokens[1:], false, 0)
 		store.LinkNodes(nodeI, false, expr)
@@ -260,6 +260,7 @@ func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (
 
 func validateToken(token string) ([]string, error) {
 	var statements = []string {"exit", "let", "if"}
+	var ifPreds = []string {"elif", "else"}
 	var expressionOperators = []string {"+", "*", "-", "/"}
 	var paren = []string {"(", ")"}
 	var statementTerminators = []string {"\n", ";"}
@@ -268,6 +269,9 @@ func validateToken(token string) ([]string, error) {
 
 	if stringInSlice(token, expressionOperators) {
 		return []string{"Expr", "ExprOp"}, nil
+	}
+	if stringInSlice(token, ifPreds) {
+		return []string{"ifPred"}, nil
 	}
 	if token == "=" {
 		return []string{"Stmt", "StmtOp"}, nil

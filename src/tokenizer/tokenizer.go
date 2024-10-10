@@ -121,7 +121,7 @@ func skipComment(content string, i uint8, lineComment bool) (string, error) {
 }
 
 func isEndOfToken(a rune) bool {
-	var endOfTokenRunes = [...]rune {'(', ')', ' ', '\n', '=', '+', '*', '-', '/'}
+	var endOfTokenRunes = [...]rune {'(', ')', '{', '}', ' ', '\n', '=', '+', '*', '-', '/'}
 	for _, b := range endOfTokenRunes {
 		if b == a {
 			return true
