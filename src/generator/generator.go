@@ -294,16 +294,19 @@ func evalBinExpr(node *parser.TokenTreeNode, buffer string, state *state, paren 
 	buffer = buffer + "\n" + "  pop    rbx"
 	if node.Val == "+" {
 		buffer = buffer + "\n" + "  add    rax, rbx"
+		buffer = buffer + "\n" + "  push   rax"
 	} else if node.Val == "*" {
 		buffer = buffer + "\n" + "  mul    rbx"
+		buffer = buffer + "\n" + "  push   rax"
 	} else if node.Val == "-" {
-		buffer = buffer + "\n" + "  sub    rax, rbx"
+		buffer = buffer + "\n" + "  sub    rbx, rax"
+		buffer = buffer + "\n" + "  push   rbx"
 	} else if node.Val == "/" {
 		buffer = buffer + "\n" + "  div    rbx"
+		buffer = buffer + "\n" + "  push   rax"
 	}else {
 		return "", errors.New("Invalid BinExpr: " + node.Val)
 	}
-	buffer = buffer + "\n" + "  push   rax"
 	state.stackPtr--
 	
 	return buffer, nil
