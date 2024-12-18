@@ -1,6 +1,6 @@
 let x = 2
 let y = 0
-if (1) {
+if (0) {
 exit(x)
 }elif(y){
 exit(7)
