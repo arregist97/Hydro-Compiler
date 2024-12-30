@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/arregist97/Hydro-Compiler/tokenizer"
-	"github.com/arregist97/Hydro-Compiler/parser"
 	"github.com/arregist97/Hydro-Compiler/generator"
+	"github.com/arregist97/Hydro-Compiler/parser"
+	"github.com/arregist97/Hydro-Compiler/tokenizer"
 )
 
 func main() {
@@ -20,8 +20,8 @@ func main() {
 		return
 	}
 
-        fileName := os.Args[1]
-	
+	fileName := os.Args[1]
+
 	content, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Println("Error reading file:", err)

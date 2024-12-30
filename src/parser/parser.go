@@ -1,6 +1,6 @@
 package parser
 
-import(
+import (
 	"errors"
 	"fmt"
 	"log"
@@ -8,7 +8,7 @@ import(
 )
 
 type NodeStore struct {
-	I int
+	I     int
 	Block *nodeBlock
 }
 
@@ -34,13 +34,13 @@ func (n *NodeStore) LinkNodes(j int, right bool, next *TokenTreeNode) {
 func NewNodeStore() *NodeStore {
 	return &NodeStore{
 		Block: newNodeBlock(),
-		I: 0,
+		I:     0,
 	}
 }
 
 type nodeBlock struct {
 	nodes *[]TokenTreeNode
-	next *nodeBlock
+	next  *nodeBlock
 }
 
 func newNodeBlock() *nodeBlock {
@@ -56,11 +56,11 @@ func (n *nodeBlock) addNode(tokenType []string, val string, index int) {
 		nodes[index].TokenType = tokenType
 		nodes[index].Val = val
 	} else if n.next != nil {
-		n.next.addNode(tokenType, val, index - cap(nodes))
+		n.next.addNode(tokenType, val, index-cap(nodes))
 	} else {
 		newBlock := newNodeBlock()
 		n.next = newBlock
-		n.next.addNode(tokenType, val, index - cap(nodes))
+		n.next.addNode(tokenType, val, index-cap(nodes))
 	}
 }
 
@@ -82,7 +82,7 @@ func (n *nodeBlock) linkNodes(j int, right bool, next *TokenTreeNode) {
 		if n.next == nil {
 			log.Fatal("index overflow")
 		}
-		n.next.linkNodes(j - cap(nodes), right, next)
+		n.next.linkNodes(j-cap(nodes), right, next)
 	} else {
 		fmt.Printf("Linking %s, %s to %s, %s\n", next.TokenType, next.Val, nodes[j].TokenType, nodes[j].Val)
 		if right {
@@ -97,14 +97,14 @@ func (n *nodeBlock) linkNodes(j int, right bool, next *TokenTreeNode) {
 }
 
 type TokenTreeNode struct {
-	Val string
+	Val       string
 	TokenType []string
-	Left *TokenTreeNode
-	Right *TokenTreeNode
-	Root *TokenTreeNode
+	Left      *TokenTreeNode
+	Right     *TokenTreeNode
+	Root      *TokenTreeNode
 }
 
-func (node *TokenTreeNode) PrintTokenTree () {
+func (node *TokenTreeNode) PrintTokenTree() {
 	fmt.Println("Type: ", node.TokenType)
 	fmt.Println("Val: ", node.Val)
 	if node.Left != nil {
@@ -120,7 +120,7 @@ func (node *TokenTreeNode) PrintTokenTree () {
 func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		nodeI := store.I
-		store.AddNode([]string {"Stmt", "StmtTm"}, "EOF")
+		store.AddNode([]string{"Stmt", "StmtTm"}, "EOF")
 		return store.GetNode(nodeI)
 	}
 	val := tokens[0]
@@ -152,9 +152,23 @@ func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeN
 		store.LinkNodes(nodeI, false, expr)
 	}
 	offset := store.I - nodeI
-	tree := BuildTokenTree(store, tokens[offset:], inScope)
+	tokens = tokens[offset:]
+	if stringInSlice(node.Val, []string{"if", "elif", "else"}) {
+		tokens = skipNewLine(tokens)
+	}
+	tree := BuildTokenTree(store, tokens, inScope)
 	store.LinkNodes(nodeI, true, tree)
 	return node
+}
+
+func skipNewLine(tokens []string) []string {
+	fmt.Println("Checking if newline: '" + tokens[0] + "'")
+	if len(tokens) <= 0 || tokens[0] != "\n" {
+		return tokens
+	}
+
+	return tokens[1:]
+
 }
 
 func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
@@ -173,6 +187,10 @@ func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode
 	if len(tokenType) > 1 && tokenType[1] == "ExprOp" {
 		fmt.Println("Exiting Expr detected ExprOp")
 		return nil
+	}
+	if paren && val == "\n" {
+		fmt.Println("Skipping newline inside paren Expr")
+		return constructAtom(store, tokens[1:], paren)
 	}
 	nodeI := store.I
 	store.AddNode(tokenType, val)
@@ -194,7 +212,7 @@ func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode
 	return node
 }
 
-func isBinExpr(store *NodeStore, tokens []string) bool {
+func isBinExpr(tokens []string) bool {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
@@ -214,19 +232,19 @@ func isBinExpr(store *NodeStore, tokens []string) bool {
 
 }
 
-func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (*TokenTreeNode, []string){
+func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (*TokenTreeNode, []string) {
 	baseI := store.I
-	fmt.Println("Entering expr of binexpr")
+	fmt.Println("Entering expr")
 	fmt.Println("Paren: ", paren)
 	expr := constructAtom(store, tokens, paren)
 	offset := store.I - baseI
-	if tokens[offset - 1] == ")" {
+	if tokens[offset-1] == ")" {
 		return expr, tokens[offset:]
 	}
 	tokens = tokens[offset:]
 	firstI := true
-	for true {
-		if !isBinExpr(store, tokens) {
+	for {
+		if !isBinExpr(tokens) {
 			break
 		}
 		val := tokens[0]
@@ -259,11 +277,11 @@ func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (
 }
 
 func validateToken(token string) ([]string, error) {
-	var statements = []string {"exit", "let", "if"}
-	var ifPreds = []string {"elif", "else"}
-	var expressionOperators = []string {"+", "*", "-", "/"}
-	var paren = []string {"(", ")"}
-	var statementTerminators = []string {"\n", ";"}
+	var statements = []string{"exit", "let", "if"}
+	var ifPreds = []string{"elif", "else"}
+	var expressionOperators = []string{"+", "*", "-", "/"}
+	var paren = []string{"(", ")"}
+	var statementTerminators = []string{"\n", ";"}
 	var digitCheck = regexp.MustCompile(`^[0-9]+$`)
 	var varCheck = regexp.MustCompile(`\b[_a-zA-Z][_a-zA-Z0-9]*\b`)
 
@@ -301,10 +319,10 @@ func validateToken(token string) ([]string, error) {
 }
 
 func stringInSlice(a string, list []string) bool {
-    for _, b := range list {
-        if b == a {
-            return true
-        }
-    }
-    return false
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }

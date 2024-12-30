@@ -11,9 +11,9 @@ import (
 
 type state struct {
 	stackPtr int
-	context []map[string]int
-	scopeI int
-	labelI int
+	context  []map[string]int
+	scopeI   int
+	labelI   int
 }
 
 func (s *state) enterScope(node *parser.TokenTreeNode, buffer string) (string, error) {
@@ -35,7 +35,7 @@ func (s *state) enterScope(node *parser.TokenTreeNode, buffer string) (string, e
 func (s *state) exitScope(buffer string) (string, error) {
 	scopeStkPtr, err := s.getVar("{")
 	if err != nil {
-		return "", errors.New("No scope to exit")
+		return "", errors.New("no scope to exit")
 	}
 	s.context = s.context[:s.scopeI]
 	s.scopeI--
@@ -43,7 +43,7 @@ func (s *state) exitScope(buffer string) (string, error) {
 	fmt.Println(s.context)
 	stackDiff := s.stackPtr - scopeStkPtr
 	if stackDiff > 0 {
-		buffer = buffer + "\n" + "  add    rsp, " + strconv.Itoa(stackDiff * 8)
+		buffer = buffer + "\n" + "  add    rsp, " + strconv.Itoa(stackDiff*8)
 		s.stackPtr = scopeStkPtr
 	}
 	return buffer, nil
@@ -69,7 +69,7 @@ func (s *state) getVar(val string) (int, error) {
 		}
 	}
 	if !validIdent {
-		return 0, errors.New("Undeclared ident " + val)
+		return 0, errors.New("undeclared ident " + val)
 	}
 	return stackLoc, nil
 }
@@ -78,7 +78,7 @@ func newState() state {
 	scope := make(map[string]int)
 	context := make([]map[string]int, 1)
 	context[0] = scope
-	s := state{ stackPtr: 0, context: context, scopeI: 0, labelI: 0 }
+	s := state{stackPtr: 0, context: context, scopeI: 0, labelI: 0}
 	fmt.Println("State create")
 	fmt.Println(s.context)
 	return s
@@ -96,7 +96,7 @@ func Generate(node *parser.TokenTreeNode) (string, error) {
 func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, error) {
 	fmt.Println("Evaluating statement " + node.Val + "...")
 	if node.TokenType[0] != "Stmt" {
-		return "", errors.New("Stmt expected. Recieved " + node.TokenType[0])
+		return "", errors.New("statement expected, recieved " + node.TokenType[0])
 	}
 	if node.Val == "EOF" {
 		fmt.Println("Test")
@@ -114,14 +114,14 @@ func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, 
 			return "", err
 		}
 		buffer = buf
-		
+
 	} else if node.Val == "let" {
 		buf, err := evalLet(node.Right, buffer, state)
 		if err != nil {
 			return "", err
 		}
 		buffer = buf
-		
+
 		node = node.Right.Right
 	} else if node.Val == "if" {
 		buf, nd, err := evalIf(node, buffer, state)
@@ -130,9 +130,8 @@ func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, 
 		}
 		buffer = buf
 		node = nd
-		fmt.Println("Exit if, node: " + node.Val)
+		fmt.Println("Exiting if, node: " + node.Val)
 	} else if node.Val == "{" {
-		//enterScope needs to pass buffer and state back to evalStmt
 		buf, err := state.enterScope(node, buffer)
 		if err != nil {
 			return "", err
@@ -145,14 +144,14 @@ func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, 
 		}
 		return buffer, nil
 	} else {
-		return "", errors.New("Undefined Stmt: " + node.Val)
+		return "", errors.New("undefined Stmt: " + node.Val)
 	}
-	return evalTerminator(node.Right, buffer, state) 
+	return evalTerminator(node.Right, buffer, state)
 }
 
 func evalExit(node *parser.TokenTreeNode, buffer string, state *state) (string, error) {
 	if node.Val != "(" {
-		return "", errors.New("Expected `(` after exit")
+		return "", errors.New("expected `(` after exit")
 	}
 	buffer, err := evalExpr(node, buffer, state, false)
 	if err != nil {
@@ -196,57 +195,63 @@ func evalIf(node *parser.TokenTreeNode, buffer string, state *state) (string, *p
 
 	node = node.Right
 	if node.Val != "{" {
-		return "", nil, errors.New("Expected Scope.")
+		return "", nil, errors.New("expected scope")
 	}
 	buffer, err = state.enterScope(node, buffer)
 	if err != nil {
 		return "", nil, err
 	}
 
-	node = node.Right
-	if node.TokenType[0] != "ifPred"{
+	next := node.Right
+	if next.TokenType[0] != "ifPred" {
 		buffer = buffer + "\n" + label + ":"
 		return buffer, node, nil
 	}
-	
+
 	endLabel := "label" + strconv.Itoa(state.labelI)
 	state.labelI++
-	for node.Val == "elif" {
+	for next.Val == "elif" {
+		node = next
+		next = node.Right
+
 		buffer = buffer + "\n" + "  jmp    " + endLabel
 		buffer = buffer + "\n" + label + ":"
-		
+
 		buffer, err = evalExpr(node.Left, buffer, state, false)
 		if err != nil {
 			return "", nil, err
 		}
-		
+
 		label = "label" + strconv.Itoa(state.labelI)
 		state.labelI++
 		buffer = buffer + "\n" + "  pop    rax"
 		buffer = buffer + "\n" + "  test   rax, rax"
 		buffer = buffer + "\n" + "  jz     " + label
 		state.stackPtr--
-		
-		node = node.Right
-		if node.Val != "{" {
-			return "", nil, errors.New("Expected Scope.")
+
+		if next.Val != "{" {
+			return "", nil, errors.New("expected scope")
 		}
+		node = next
+		next = node.Right
 
 		buffer, err = state.enterScope(node, buffer)
 		if err != nil {
 			return "", nil, err
 		}
-
-		node = node.Right
 	}
 
-	if node.Val == "else" {
+	if next.Val == "else" {
+		node = next
+		next = node.Right
+
 		buffer = buffer + "\n" + "  jmp    " + endLabel
 		buffer = buffer + "\n" + label + ":"
-		node = node.Right
-		if node.Val != "{" {
-			return "", nil, errors.New("Expected Scope.")
+
+		if next.Val != "{" {
+			return "", nil, errors.New("expected scope")
 		}
+		node = next
 		buffer, err = state.enterScope(node, buffer)
 		if err != nil {
 			return "", nil, err
@@ -263,7 +268,7 @@ func evalIf(node *parser.TokenTreeNode, buffer string, state *state) (string, *p
 func evalExpr(node *parser.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
 	if node.TokenType[0] != "Expr" {
 		fmt.Println("Node val: " + node.Val)
-		return "", errors.New("Expr expected, recieved " + node.TokenType[0])
+		return "", errors.New("expression expected, recieved " + node.TokenType[0])
 	}
 	if node.Val == "(" {
 		return evalExpr(node.Left, buffer, state, true)
@@ -277,7 +282,7 @@ func evalExpr(node *parser.TokenTreeNode, buffer string, state *state, paren boo
 	if node.TokenType[1] == "ExprOp" {
 		return evalBinExpr(node, buffer, state, paren)
 	}
-	return "", errors.New("Invalid Expr: " + node.TokenType[1])
+	return "", errors.New("invalid expression: " + node.TokenType[1])
 }
 
 func evalBinExpr(node *parser.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
@@ -304,11 +309,11 @@ func evalBinExpr(node *parser.TokenTreeNode, buffer string, state *state, paren 
 	} else if node.Val == "/" {
 		buffer = buffer + "\n" + "  div    rbx"
 		buffer = buffer + "\n" + "  push   rax"
-	}else {
-		return "", errors.New("Invalid BinExpr: " + node.Val)
+	} else {
+		return "", errors.New("invalid binary expression: " + node.Val)
 	}
 	state.stackPtr--
-	
+
 	return buffer, nil
 }
 
@@ -329,10 +334,10 @@ func evalTerm(node *parser.TokenTreeNode, buffer string, state *state, paren boo
 		buffer = buffer + "\n" + "  push   QWORD [rsp + " + strconv.Itoa(stackOffset) + "]"
 		state.stackPtr++
 	} else {
-		return "", errors.New("Invalid Term: " + node.TokenType[2])
+		return "", errors.New("invalid term: " + node.TokenType[2])
 	}
 	if paren && (node.Right == nil || node.Right.Val != ")") {
-		return "", errors.New("Expected ')'")
+		return "", errors.New("expected ')'")
 	}
 	return buffer, nil
 }
@@ -353,5 +358,5 @@ func evalTerminator(node *parser.TokenTreeNode, buffer string, state *state) (st
 		buffer = buf
 		return evalTerminator(node.Right, buffer, state)
 	}
-	return "", errors.New("Invalid Terminator: " + node.Val)
+	return "", errors.New("invalid terminator: " + node.Val)
 }

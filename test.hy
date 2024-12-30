@@ -1,2 +1,7 @@
 let x = 10 - 3
-exit(x)
+if 0
+{
+exit(0)
+}
+exit(x
+)
