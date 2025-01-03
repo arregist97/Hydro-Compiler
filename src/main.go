@@ -28,9 +28,8 @@ func main() {
 		return
 	}
 
-	var empty []string
-	tokens := tokenizer.RecTokenize(string(content), empty)
-	fmt.Println(tokens)
+	var tokens []*tokenizer.Token
+	tokens = tokenizer.Tokenize(string(content), tokens)
 	store := parser.NewNodeStore()
 	tree := parser.BuildTokenTree(store, tokens, false)
 	fmt.Println("\nToken Tree:")

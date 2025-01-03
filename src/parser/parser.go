@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+
+	"github.com/arregist97/Hydro-Compiler/tokenizer"
 )
 
 type NodeStore struct {
@@ -12,9 +14,9 @@ type NodeStore struct {
 	Block *nodeBlock
 }
 
-func (n *NodeStore) AddNode(tokenType []string, val string) {
+func (n *NodeStore) AddNode(token *tokenizer.Token, tokenType []string) {
 	store := n.Block
-	store.addNode(tokenType, val, n.I)
+	store.addNode(token, tokenType, n.I)
 	n.I++
 }
 
@@ -50,17 +52,17 @@ func newNodeBlock() *nodeBlock {
 	}
 }
 
-func (n *nodeBlock) addNode(tokenType []string, val string, index int) {
+func (n *nodeBlock) addNode(token *tokenizer.Token, tokenType []string, index int) {
 	nodes := *n.nodes
 	if index < cap(nodes) {
 		nodes[index].TokenType = tokenType
-		nodes[index].Val = val
+		nodes[index].Token = token
 	} else if n.next != nil {
-		n.next.addNode(tokenType, val, index-cap(nodes))
+		n.next.addNode(token, tokenType, index-cap(nodes))
 	} else {
 		newBlock := newNodeBlock()
 		n.next = newBlock
-		n.next.addNode(tokenType, val, index-cap(nodes))
+		n.next.addNode(token, tokenType, index-cap(nodes))
 	}
 }
 
@@ -84,7 +86,7 @@ func (n *nodeBlock) linkNodes(j int, right bool, next *TokenTreeNode) {
 		}
 		n.next.linkNodes(j-cap(nodes), right, next)
 	} else {
-		fmt.Printf("Linking %s, %s to %s, %s\n", next.TokenType, next.Val, nodes[j].TokenType, nodes[j].Val)
+		fmt.Printf("Linking %s, %s to %s, %s\n", next.TokenType, next.Token.Val, nodes[j].TokenType, nodes[j].Token.Val)
 		if right {
 			fmt.Println("Right link")
 			nodes[j].Right = next
@@ -97,7 +99,7 @@ func (n *nodeBlock) linkNodes(j int, right bool, next *TokenTreeNode) {
 }
 
 type TokenTreeNode struct {
-	Val       string
+	Token     *tokenizer.Token
 	TokenType []string
 	Left      *TokenTreeNode
 	Right     *TokenTreeNode
@@ -106,7 +108,8 @@ type TokenTreeNode struct {
 
 func (node *TokenTreeNode) PrintTokenTree() {
 	fmt.Println("Type: ", node.TokenType)
-	fmt.Println("Val: ", node.Val)
+	fmt.Println("Val: ")
+	node.Token.Print()
 	if node.Left != nil {
 		fmt.Println("{")
 		node.Left.PrintTokenTree()
@@ -117,43 +120,41 @@ func (node *TokenTreeNode) PrintTokenTree() {
 	}
 }
 
-func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeNode {
+func BuildTokenTree(store *NodeStore, tokens []*tokenizer.Token, inScope bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
-		nodeI := store.I
-		store.AddNode([]string{"Stmt", "StmtTm"}, "EOF")
-		return store.GetNode(nodeI)
+		return nil
 	}
-	val := tokens[0]
-	tokenType, err := validateToken(val)
+	token := tokens[0]
+	tokenType, err := validateToken(token)
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
 	var nodeI int = store.I
-	store.AddNode(tokenType, val)
+	store.AddNode(token, tokenType)
 	fmt.Println("Printing Token")
 	node := store.GetNode(nodeI)
 	node.PrintTokenTree()
-	if node.Val == "{" {
+	if node.Token.Val == "{" {
 		fmt.Println("Entering Scope")
 		scope := BuildTokenTree(store, tokens[1:], true)
 		store.LinkNodes(nodeI, false, scope)
-	} else if node.Val == "}" {
+	} else if node.Token.Val == "}" {
 		if !inScope {
 			log.Fatal("Out of scope")
 		}
 		return node
-	} else if node.Val == "(" {
+	} else if node.Token.Val == "(" {
 		fmt.Println("Entering Expr paren")
 		expr, _ := constructExpr(store, tokens[1:], true, 0)
 		store.LinkNodes(nodeI, false, expr)
-	} else if stringInSlice(node.Val, []string{"exit", "=", "if", "elif"}) {
+	} else if stringInSlice(node.Token.Val, []string{"exit", "=", "if", "elif"}) {
 		fmt.Println("Entering Expr no paren")
 		expr, _ := constructExpr(store, tokens[1:], false, 0)
 		store.LinkNodes(nodeI, false, expr)
 	}
 	offset := store.I - nodeI
 	tokens = tokens[offset:]
-	if stringInSlice(node.Val, []string{"if", "elif", "else"}) {
+	if stringInSlice(node.Token.Val, []string{"if", "elif", "else"}) {
 		tokens = skipNewLine(tokens)
 	}
 	tree := BuildTokenTree(store, tokens, inScope)
@@ -161,9 +162,9 @@ func BuildTokenTree(store *NodeStore, tokens []string, inScope bool) *TokenTreeN
 	return node
 }
 
-func skipNewLine(tokens []string) []string {
-	fmt.Println("Checking if newline: '" + tokens[0] + "'")
-	if len(tokens) <= 0 || tokens[0] != "\n" {
+func skipNewLine(tokens []*tokenizer.Token) []*tokenizer.Token {
+	fmt.Println("Checking if newline: '" + tokens[0].Val + "'")
+	if len(tokens) <= 0 || tokens[0].Val != "\n" {
 		return tokens
 	}
 
@@ -171,12 +172,12 @@ func skipNewLine(tokens []string) []string {
 
 }
 
-func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode {
+func constructAtom(store *NodeStore, tokens []*tokenizer.Token, paren bool) *TokenTreeNode {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
-	val := tokens[0]
-	tokenType, err := validateToken(val)
+	token := tokens[0]
+	tokenType, err := validateToken(token)
 	if err != nil {
 		log.Fatal("Error building token tree: ", err)
 	}
@@ -188,21 +189,21 @@ func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode
 		fmt.Println("Exiting Expr detected ExprOp")
 		return nil
 	}
-	if paren && val == "\n" {
+	if paren && token.Val == "\n" {
 		fmt.Println("Skipping newline inside paren Expr")
 		return constructAtom(store, tokens[1:], paren)
 	}
 	nodeI := store.I
-	store.AddNode(tokenType, val)
+	store.AddNode(token, tokenType)
 	fmt.Println("Printing Token")
 	node := store.GetNode(nodeI)
 	node.PrintTokenTree()
 
-	if node.Val == "(" {
+	if node.Token.Val == "(" {
 		fmt.Println("Entering Expr paren")
 		expr, _ := constructExpr(store, tokens[1:], true, 0)
 		store.LinkNodes(nodeI, false, expr)
-	} else if node.Val == ")" && paren {
+	} else if node.Token.Val == ")" && paren {
 		fmt.Println("Exiting Expr paren")
 		return node
 	}
@@ -212,13 +213,13 @@ func constructAtom(store *NodeStore, tokens []string, paren bool) *TokenTreeNode
 	return node
 }
 
-func isBinExpr(tokens []string) bool {
+func isBinExpr(tokens []*tokenizer.Token) bool {
 	if len(tokens) <= 0 {
 		log.Fatal("Unexpected end of file.")
 	}
-	val := tokens[0]
-	tokenType, err := validateToken(val)
-	fmt.Println("Is BinExpr: " + val)
+	token := tokens[0]
+	tokenType, err := validateToken(token)
+	fmt.Println("Is BinExpr: " + token.Val)
 	fmt.Println(tokenType)
 	if err != nil {
 		log.Fatal("Error checking for binary expression: ", err)
@@ -232,13 +233,13 @@ func isBinExpr(tokens []string) bool {
 
 }
 
-func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (*TokenTreeNode, []string) {
+func constructExpr(store *NodeStore, tokens []*tokenizer.Token, paren bool, minPrec int) (*TokenTreeNode, []*tokenizer.Token) {
 	baseI := store.I
 	fmt.Println("Entering expr")
 	fmt.Println("Paren: ", paren)
 	expr := constructAtom(store, tokens, paren)
 	offset := store.I - baseI
-	if tokens[offset-1] == ")" {
+	if tokens[offset-1].Val == ")" {
 		return expr, tokens[offset:]
 	}
 	tokens = tokens[offset:]
@@ -247,17 +248,17 @@ func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (
 		if !isBinExpr(tokens) {
 			break
 		}
-		val := tokens[0]
-		tokenType, _ := validateToken(val)
+		token := tokens[0]
+		tokenType, _ := validateToken(token)
 		currPrec := 0
-		if val == "*" || val == "/" {
+		if token.Val == "*" || token.Val == "/" {
 			currPrec = 1
 		}
 		if currPrec < minPrec {
 			break
 		}
 		opI := store.I
-		store.AddNode(tokenType, val)
+		store.AddNode(token, tokenType)
 		opNode := store.GetNode(opI)
 		currPrec = currPrec + 1
 		tokens = tokens[1:]
@@ -276,46 +277,48 @@ func constructExpr(store *NodeStore, tokens []string, paren bool, minPrec int) (
 	return expr, tokens
 }
 
-func validateToken(token string) ([]string, error) {
+func validateToken(token *tokenizer.Token) ([]string, error) {
 	var statements = []string{"exit", "let", "if"}
 	var ifPreds = []string{"elif", "else"}
 	var expressionOperators = []string{"+", "*", "-", "/"}
 	var paren = []string{"(", ")"}
-	var statementTerminators = []string{"\n", ";"}
+	var statementTerminators = []string{"\n", ";", "EOF"}
 	var digitCheck = regexp.MustCompile(`^[0-9]+$`)
 	var varCheck = regexp.MustCompile(`\b[_a-zA-Z][_a-zA-Z0-9]*\b`)
 
-	if stringInSlice(token, expressionOperators) {
+	token.Print()
+
+	if stringInSlice(token.Val, expressionOperators) {
 		return []string{"Expr", "ExprOp"}, nil
 	}
-	if stringInSlice(token, ifPreds) {
+	if stringInSlice(token.Val, ifPreds) {
 		return []string{"ifPred"}, nil
 	}
-	if token == "=" {
+	if token.Val == "=" {
 		return []string{"Stmt", "StmtOp"}, nil
 	}
-	if stringInSlice(token, statementTerminators) {
+	if stringInSlice(token.Val, statementTerminators) {
 		return []string{"Stmt", "StmtTm"}, nil
 	}
-	if stringInSlice(token, statements) {
+	if stringInSlice(token.Val, statements) {
 		return []string{"Stmt"}, nil
 	}
-	if stringInSlice(token, paren) {
+	if stringInSlice(token.Val, paren) {
 		return []string{"Expr"}, nil
 	}
-	if token == "{" {
+	if token.Val == "{" {
 		return []string{"Stmt", "Scope"}, nil
 	}
-	if token == "}" {
+	if token.Val == "}" {
 		return []string{"Stmt", "ScopeTm"}, nil
 	}
-	if digitCheck.MatchString(token) {
+	if digitCheck.MatchString(token.Val) {
 		return []string{"Expr", "Term", "intLit"}, nil
 	}
-	if varCheck.MatchString(token) {
+	if varCheck.MatchString(token.Val) {
 		return []string{"Expr", "Term", "ident"}, nil
 	}
-	return []string{}, errors.New("Unable to identify token: `" + token + "`")
+	return []string{}, errors.New("Unable to identify token: `" + token.Val + "`")
 }
 
 func stringInSlice(a string, list []string) bool {
