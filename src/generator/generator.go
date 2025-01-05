@@ -3,7 +3,6 @@ package generator
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/arregist97/Hydro-Compiler/parser"
@@ -20,11 +19,15 @@ func (s *state) enterScope(node *parser.TokenTreeNode, buffer string) (string, e
 	newScope := make(map[string]int)
 	s.scopeI++
 	s.context = append(s.context, newScope)
-	s.decVar("{")
+	err := s.decVar("{")
+	if err != nil {
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":" + err.Error())
+	}
 	fmt.Println("Enter new scope")
 	fmt.Println(s.context)
 
-	buf, err := evalTerminator(node.Left, buffer, s)
+	var buf string
+	buf, err = evalTerminator(node.Left, buffer, s)
 	if err != nil {
 		return "", err
 	}
@@ -35,7 +38,7 @@ func (s *state) enterScope(node *parser.TokenTreeNode, buffer string) (string, e
 func (s *state) exitScope(buffer string) (string, error) {
 	scopeStkPtr, err := s.getVar("{")
 	if err != nil {
-		return "", errors.New("no scope to exit")
+		return "", errors.New("unexpected `}`")
 	}
 	s.context = s.context[:s.scopeI]
 	s.scopeI--
@@ -49,15 +52,22 @@ func (s *state) exitScope(buffer string) (string, error) {
 	return buffer, nil
 }
 
-func (s *state) decVar(val string) {
+func (s *state) decVar(val string) error {
+	if val != "{" {
+		_, err := s.getVar(val)
+		if err == nil {
+			return errors.New("variable `" + val + "` cannot be reassigned.")
+		}
+	}
 	scope := s.context[s.scopeI]
 	scope[val] = s.stackPtr
+	return nil
 }
 
 func (s *state) getVar(val string) (int, error) {
 	var scope map[string]int
 	var stackLoc int
-	var validIdent bool
+	var validIdent = false
 
 	fmt.Println("Retrieving var value")
 	fmt.Println(s.context)
@@ -69,7 +79,7 @@ func (s *state) getVar(val string) (int, error) {
 		}
 	}
 	if !validIdent {
-		return 0, errors.New("undeclared ident " + val)
+		return 0, errors.New("undeclared variable `" + val + "`")
 	}
 	return stackLoc, nil
 }
@@ -96,7 +106,7 @@ func Generate(node *parser.TokenTreeNode) (string, error) {
 func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, error) {
 	fmt.Println("Evaluating statement " + node.Token.Val + "...")
 	if node.TokenType[0] != "Stmt" {
-		return "", errors.New("statement expected, recieved " + node.TokenType[0])
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":statement expected, recieved " + node.TokenType[0])
 	}
 	if node.Token.Val == "EOF" {
 		fmt.Println("Test")
@@ -140,7 +150,7 @@ func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, 
 	} else if node.Token.Val == "}" {
 		buffer, err := state.exitScope(buffer)
 		if err != nil {
-			return "", err
+			return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":" + err.Error())
 		}
 		return buffer, nil
 	} else {
@@ -151,7 +161,7 @@ func evalStmt(node *parser.TokenTreeNode, buffer string, state *state) (string, 
 
 func evalExit(node *parser.TokenTreeNode, buffer string, state *state) (string, error) {
 	if node.Token.Val != "(" {
-		return "", errors.New("expected `(` after exit")
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":expected `(` after `exit`")
 	}
 	buffer, err := evalExpr(node, buffer, state, false)
 	if err != nil {
@@ -166,10 +176,10 @@ func evalExit(node *parser.TokenTreeNode, buffer string, state *state) (string, 
 
 func evalLet(node *parser.TokenTreeNode, buffer string, state *state) (string, error) {
 	if len(node.TokenType) > 2 && node.TokenType[2] != "ident" {
-		log.Fatal("Improper declaration")
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":expected variable after `let`")
 	}
 	if node.Right.Token.Val != "=" {
-		log.Fatal("Expected '='")
+		return "", errors.New("line " + strconv.Itoa(node.Right.Token.Line) + ", column " + strconv.Itoa(node.Right.Token.Column) + ":expected `=`")
 	}
 	buf, err := evalExpr(node.Right.Left, buffer, state, false)
 	if err != nil {
@@ -177,7 +187,10 @@ func evalLet(node *parser.TokenTreeNode, buffer string, state *state) (string, e
 	}
 	buffer = buf
 
-	state.decVar(node.Token.Val)
+	err = state.decVar(node.Token.Val)
+	if err != nil {
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":" + err.Error())
+	}
 	return buffer, nil
 }
 
@@ -195,7 +208,7 @@ func evalIf(node *parser.TokenTreeNode, buffer string, state *state) (string, *p
 
 	node = node.Right
 	if node.Token.Val != "{" {
-		return "", nil, errors.New("expected scope")
+		return "", nil, errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":expected `{`")
 	}
 	buffer, err = state.enterScope(node, buffer)
 	if err != nil {
@@ -230,7 +243,7 @@ func evalIf(node *parser.TokenTreeNode, buffer string, state *state) (string, *p
 		state.stackPtr--
 
 		if next.Token.Val != "{" {
-			return "", nil, errors.New("expected scope")
+			return "", nil, errors.New("line " + strconv.Itoa(next.Token.Line) + ", column " + strconv.Itoa(next.Token.Column) + ":expected `{`")
 		}
 		node = next
 		next = node.Right
@@ -249,7 +262,7 @@ func evalIf(node *parser.TokenTreeNode, buffer string, state *state) (string, *p
 		buffer = buffer + "\n" + label + ":"
 
 		if next.Token.Val != "{" {
-			return "", nil, errors.New("expected scope")
+			return "", nil, errors.New("line " + strconv.Itoa(next.Token.Line) + ", column " + strconv.Itoa(next.Token.Column) + ":expected `{`")
 		}
 		node = next
 		buffer, err = state.enterScope(node, buffer)
@@ -268,7 +281,7 @@ func evalIf(node *parser.TokenTreeNode, buffer string, state *state) (string, *p
 func evalExpr(node *parser.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
 	if node.TokenType[0] != "Expr" {
 		fmt.Println("Node val: " + node.Token.Val)
-		return "", errors.New("expression expected, recieved " + node.TokenType[0])
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":expression expected, recieved " + node.TokenType[0])
 	}
 	if node.Token.Val == "(" {
 		return evalExpr(node.Left, buffer, state, true)
@@ -276,13 +289,10 @@ func evalExpr(node *parser.TokenTreeNode, buffer string, state *state, paren boo
 	if node.TokenType[1] == "Term" {
 		return evalTerm(node, buffer, state, paren)
 	}
-	if node.TokenType[1] == "StkVr" {
-		return buffer, nil
-	}
 	if node.TokenType[1] == "ExprOp" {
 		return evalBinExpr(node, buffer, state, paren)
 	}
-	return "", errors.New("invalid expression: " + node.TokenType[1])
+	return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":invalid expression: " + node.TokenType[1])
 }
 
 func evalBinExpr(node *parser.TokenTreeNode, buffer string, state *state, paren bool) (string, error) {
@@ -310,7 +320,7 @@ func evalBinExpr(node *parser.TokenTreeNode, buffer string, state *state, paren 
 		buffer = buffer + "\n" + "  div    rbx"
 		buffer = buffer + "\n" + "  push   rax"
 	} else {
-		return "", errors.New("invalid binary expression: " + node.Token.Val)
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":invalid binary expression operator: " + node.Token.Val)
 	}
 	state.stackPtr--
 
@@ -325,7 +335,7 @@ func evalTerm(node *parser.TokenTreeNode, buffer string, state *state, paren boo
 	} else if node.TokenType[2] == "ident" {
 		stackLoc, err := state.getVar(node.Token.Val)
 		if err != nil {
-			return "", err
+			return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":" + err.Error())
 		}
 
 		fmt.Println("Stack Pointer", state.stackPtr, "var location", stackLoc)
@@ -334,10 +344,10 @@ func evalTerm(node *parser.TokenTreeNode, buffer string, state *state, paren boo
 		buffer = buffer + "\n" + "  push   QWORD [rsp + " + strconv.Itoa(stackOffset) + "]"
 		state.stackPtr++
 	} else {
-		return "", errors.New("invalid term: " + node.TokenType[2])
+		return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":invalid term: " + node.TokenType[2])
 	}
 	if paren && (node.Right == nil || node.Right.Token.Val != ")") {
-		return "", errors.New("expected ')'")
+		return "", errors.New("line " + strconv.Itoa(node.Right.Token.Line) + ", column " + strconv.Itoa(node.Right.Token.Column) + ":expected ')'")
 	}
 	return buffer, nil
 }
@@ -353,10 +363,10 @@ func evalTerminator(node *parser.TokenTreeNode, buffer string, state *state) (st
 	if node.Token.Val == "}" {
 		buf, err := state.exitScope(buffer)
 		if err != nil {
-			return "", err
+			return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":" + err.Error())
 		}
 		buffer = buf
 		return evalTerminator(node.Right, buffer, state)
 	}
-	return "", errors.New("invalid terminator: " + node.Token.Val)
+	return "", errors.New("line " + strconv.Itoa(node.Token.Line) + ", column " + strconv.Itoa(node.Token.Column) + ":invalid terminator: " + node.Token.Val)
 }
